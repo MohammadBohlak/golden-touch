@@ -6,6 +6,8 @@ export const DURATION_PATTERN = /^\d+[smhd]?$/
 export const envValidationSchema = Joi.object({
   NODE_ENV: Joi.string().valid('development', 'production', 'test').default('development'),
   PORT: Joi.number().port().default(4000),
+  // عنوان الاستماع (اختياري) — scripts/start-prod.mjs يضبطه 127.0.0.1 ليبقى الـ API داخلياً
+  API_HOST: Joi.string().hostname(),
   DATABASE_URL: Joi.string()
     .uri({ scheme: ['postgres', 'postgresql'] })
     .required(),

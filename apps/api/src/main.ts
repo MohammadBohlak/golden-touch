@@ -22,8 +22,13 @@ async function bootstrap() {
     swaggerOptions: { persistAuthorization: true, withCredentials: true },
   })
 
-  await app.listen(config.port)
-  Logger.log(`API ready on http://localhost:${config.port}/api (docs: /api/docs)`, 'Bootstrap')
+  // في الإنتاج يُربط الـ API على 127.0.0.1 فقط (API_HOST) حتى لا تكتشف الاستضافة منفذه وتوجّه الزوار إليه بدل الواجهة
+  if (config.host) await app.listen(config.port, config.host)
+  else await app.listen(config.port)
+  Logger.log(
+    `API ready on http://${config.host ?? 'localhost'}:${config.port}/api (docs: /api/docs)`,
+    'Bootstrap',
+  )
 }
 
 void bootstrap()

@@ -27,7 +27,8 @@ const apps = [
     // cwd داخل apps/api حتى يقرأ apps/api/.env محلياً (على Render المتغيرات من لوحة التحكم)
     cwd: 'apps/api',
     script: 'dist/main.js',
-    env: { PORT: apiPort },
+    // 127.0.0.1 فقط: منفذ داخلي لا يجب أن تكتشفه الاستضافة (Render توجّه الزوار لأول منفذ عام تجده)
+    env: { PORT: apiPort, API_HOST: '127.0.0.1' },
   },
   {
     name: 'web',

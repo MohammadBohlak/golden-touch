@@ -23,6 +23,10 @@ export class AppConfig {
     return Number(this.config.get('PORT', 4000))
   }
 
+  get host(): string | undefined {
+    return this.config.get<string>('API_HOST') || undefined
+  }
+
   get jwtSecret(): string {
     return this.config.getOrThrow<string>('JWT_SECRET')
   }

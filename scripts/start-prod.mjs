@@ -11,7 +11,15 @@ import { fileURLToPath } from 'node:url'
 
 const root = fileURLToPath(new URL('..', import.meta.url))
 const publicPort = process.env.PORT || '3000'
-const apiPort = process.env.API_PORT || '4000'
+const requestedApiPort = process.env.API_PORT || '4000'
+// حماية: إن تطابق المنفذان (مثلاً PORT=4000 منسوخ من .env إلى إعدادات الاستضافة) يفشل الـ API بـ EADDRINUSE
+const apiPort = requestedApiPort === publicPort ? String(Number(publicPort) + 1) : requestedApiPort
+if (apiPort !== requestedApiPort) {
+  console.warn(
+    `[start] API_PORT (${requestedApiPort}) equals the public PORT — using ${apiPort} for the API. ` +
+      'Remove PORT from the host environment variables; the host sets it automatically.',
+  )
+}
 
 const apps = [
   {

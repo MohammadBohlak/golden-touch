@@ -1,0 +1,37 @@
+# Render Blueprint — Golden Touch على الخطة المجانية
+# خدمة واحدة تشغّل الواجهة (المنفذ العام) والـ API (داخلياً على 4000) عبر scripts/start-prod.mjs
+# المنطقة Ohio = نفس منطقة قاعدة البيانات على Supabase (us-east-2) لأقل زمن استجابة.
+services:
+  - type: web
+    name: golden-touch
+    runtime: node
+    plan: free
+    region: ohio
+    # --include=dev: أدوات البناء (nest, prisma, nuxt) من devDependencies
+    # الخطة المجانية لا تدعم Pre-Deploy Command، فتُطبَّق الـ migrations ضمن البناء
+    buildCommand: npm ci --include=dev && npm run build && npm run db:migrate
+    startCommand: npm start
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: '24'
+      - key: NODE_ENV
+        value: production
+      # انسخ القيمتين من apps/api/.env (لا تُرفعان مع الكود)
+      - key: DATABASE_URL
+        sync: false
+      - key: DIRECT_URL
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      - key: JWT_EXPIRES_IN
+        value: 30d
+      - key: COOKIE_NAME
+        value: token
+      - key: API_PORT
+        value: '4000'
+      # المهمة الدورية: طلب /api/health عبر الرابط العام (RENDER_EXTERNAL_URL) كل 10 دقائق
+      # حتى لا تُطفئ الخطة المجانية الخادم بعد 15 دقيقة خمول
+      - key: KEEP_ALIVE_INTERVAL_MINUTES
+        value: '10'

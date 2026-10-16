@@ -1,0 +1,147 @@
+// Golden Touch — مخطط قاعدة البيانات
+// الأوقات كلها تُخزَّن بـ UTC (timestamptz) وتُعرض بتوقيت الصالون (ShopSettings.timezone).
+// المبالغ بالليرة السورية كأعداد صحيحة.
+
+generator client {
+  provider        = "prisma-client-js"
+  // جلب العلاقات (include) باستعلام واحد بدل عدة استعلامات — مهم لأن قاعدة البيانات بعيدة جغرافياً
+  previewFeatures = ["relationJoins"]
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// ───────────────────────── الصلاحيات ─────────────────────────
+
+model Permission {
+  id          Int    @id @default(autoincrement())
+  key         String @unique // resource.action
+  description String
+  roles       Role[]
+
+  @@map("permissions")
+}
+
+model Role {
+  id          Int          @id @default(autoincrement())
+  name        String       @unique // admin | staff
+  label       String
+  permissions Permission[]
+  users       User[]
+  createdAt   DateTime     @default(now()) @db.Timestamptz(3)
+
+  @@map("roles")
+}
+
+model User {
+  id           String    @id @default(uuid()) @db.Uuid
+  name         String
+  email        String    @unique
+  phone        String?
+  passwordHash String
+  isActive     Boolean   @default(true)
+  roleId       Int
+  role         Role      @relation(fields: [roleId], references: [id])
+  lastLoginAt  DateTime? @db.Timestamptz(3)
+  createdAt    DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt    DateTime  @updatedAt @db.Timestamptz(3)
+
+  bookingsCreated Booking[] @relation("BookingCreatedBy")
+
+  @@index([roleId])
+  @@map("users")
+}
+
+// ───────────────────────── الصالون ─────────────────────────
+
+/// إعدادات الصالون — صف واحد فقط (id = 1)
+model ShopSettings {
+  id          Int      @id @default(1)
+  shopName    String   @default("Golden Touch")
+  /// HH:mm — بداية الدوام
+  openTime    String   @default("10:00")
+  /// HH:mm — نهاية الدوام (إن كانت أصغر من البداية فهي بعد منتصف الليل)
+  closeTime   String   @default("22:00")
+  /// دقة شبكة المواعيد بالدقائق
+  slotMinutes Int      @default(15)
+  timezone    String   @default("Asia/Damascus")
+  /// أيام العطلة: 0 = الأحد … 6 = السبت
+  daysOff     Int[]    @default([])
+  updatedAt   DateTime @updatedAt @db.Timestamptz(3)
+
+  @@map("shop_settings")
+}
+
+model Service {
+  id              String    @id @default(uuid()) @db.Uuid
+  name            String
+  /// السعر الافتراضي بالليرة السورية
+  price           Int
+  durationMinutes Int
+  isActive        Boolean   @default(true)
+  sortOrder       Int       @default(0)
+  /// حذف ناعم: الخدمات التي لها حجوزات لا تُحذف فعلياً حفاظاً على السجل
+  archivedAt      DateTime? @db.Timestamptz(3)
+  createdAt       DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt       DateTime  @updatedAt @db.Timestamptz(3)
+
+  bookings Booking[]
+
+  @@index([archivedAt, sortOrder])
+  @@map("services")
+}
+
+model Customer {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String
+  phone     String?  @unique
+  notes     String?
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+
+  bookings Booking[]
+
+  @@index([name])
+  @@map("customers")
+}
+
+enum BookingStatus {
+  ACTIVE // قيد العمل
+  COMPLETED // مكتمل
+  CANCELLED // ملغي
+}
+
+model Booking {
+  id              String        @id @default(uuid()) @db.Uuid
+  customerId      String        @db.Uuid
+  customer        Customer      @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  serviceId       String        @db.Uuid
+  service         Service       @relation(fields: [serviceId], references: [id], onDelete: Restrict)
+  /// لقطة من الخدمة وقت الحجز — تغيير الخدمة لاحقاً لا يغيّر السجل
+  serviceName     String
+  /// السعر المتفق عليه (افتراضياً سعر الخدمة)
+  price           Int
+  durationMinutes Int
+  startAt         DateTime      @db.Timestamptz(3)
+  endAt           DateTime      @db.Timestamptz(3)
+  status          BookingStatus @default(ACTIVE)
+  /// المبلغ المدفوع فعلياً عند الإكمال
+  paidAmount      Int?
+  notes           String?
+  cancelReason    String?
+  completedAt     DateTime?     @db.Timestamptz(3)
+  cancelledAt     DateTime?     @db.Timestamptz(3)
+  createdById     String?       @db.Uuid
+  createdBy       User?         @relation("BookingCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt       DateTime      @default(now()) @db.Timestamptz(3)
+  updatedAt       DateTime      @updatedAt @db.Timestamptz(3)
+
+  @@index([startAt])
+  @@index([status, startAt])
+  @@index([customerId])
+  @@index([serviceId])
+  @@map("bookings")
+}

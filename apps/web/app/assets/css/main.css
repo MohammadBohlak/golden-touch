@@ -1,0 +1,178 @@
+@import 'tailwindcss';
+
+/*
+ * Golden Touch — نظام التصميم
+ * الهوية مستخرجة من اللوغو: ذهبي #E3C177 + أسود + أبيض.
+ * ثيم فاتح فقط. كل المكوّنات تستخدم الأسماء الدلالية (canvas, surface, fg, line…) لا القيم الخام.
+ */
+@theme {
+  --font-sans: 'Cairo', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+
+  /* سلّم الذهبي — 300 هو لون اللوغو الأساسي */
+  --color-gold-50: #fcf8ef;
+  --color-gold-100: #f8eeda;
+  --color-gold-200: #f0ddb0;
+  --color-gold-300: #e3c177;
+  --color-gold-400: #d6aa55;
+  --color-gold-500: #c4923a;
+  --color-gold-600: #a6762b;
+  --color-gold-700: #845b24; /* نص ذهبي على خلفية فاتحة — تباين AA */
+  --color-gold-800: #6c4a22;
+  --color-gold-900: #5a3e1f;
+
+  /* سلّم الأسود الدافئ (من خلفية اللوغو) */
+  --color-ink-50: #fafaf9;
+  --color-ink-100: #f5f5f4;
+  --color-ink-200: #e7e5e4;
+  --color-ink-300: #d6d3d1;
+  --color-ink-400: #a8a29e;
+  --color-ink-500: #78716c;
+  --color-ink-600: #57534e;
+  --color-ink-700: #44403c;
+  --color-ink-800: #292524;
+  --color-ink-900: #1c1917;
+  --color-ink-950: #0c0a09;
+
+  /* ألوان دلالية */
+  --color-canvas: #f7f5f0;
+  --color-surface: #ffffff;
+  --color-surface-muted: #f2efe8;
+  --color-line: #e7e1d5;
+  --color-line-strong: #d3cab8;
+  --color-fg: #0c0a09;
+  --color-fg-muted: #5c564d;
+  --color-fg-subtle: #8a8378;
+  --color-brand: #e3c177;
+  --color-brand-ink: #845b24;
+
+  --color-success: #15803d;
+  --color-success-soft: #e9f6ee;
+  --color-danger: #c62828;
+  --color-danger-soft: #fdecec;
+  --color-warning: #a35207;
+  --color-warning-soft: #fdf1e1;
+  --color-info: #1d4ed8;
+  --color-info-soft: #eaf0fd;
+
+  --shadow-card: 0 1px 2px rgb(12 10 9 / 0.04), 0 1px 3px rgb(12 10 9 / 0.06);
+  --shadow-float: 0 10px 30px -8px rgb(12 10 9 / 0.25);
+  --shadow-gold: 0 8px 20px -6px rgb(196 146 58 / 0.55);
+
+  --ease-out-soft: cubic-bezier(0.22, 1, 0.36, 1);
+
+  --animate-fade-in: fade-in 160ms var(--ease-out-soft);
+  --animate-sheet-in: sheet-in 260ms var(--ease-out-soft);
+  --animate-shimmer: shimmer 1.4s linear infinite;
+
+  @keyframes fade-in {
+    from {
+      opacity: 0;
+    }
+  }
+  @keyframes sheet-in {
+    from {
+      transform: translateY(24px);
+      opacity: 0;
+    }
+  }
+  @keyframes shimmer {
+    to {
+      background-position: -200% 0;
+    }
+  }
+}
+
+@layer base {
+  html {
+    color-scheme: light;
+    -webkit-tap-highlight-color: transparent;
+    text-size-adjust: 100%;
+  }
+
+  body {
+    @apply bg-canvas font-sans text-fg antialiased;
+    min-height: 100dvh;
+  }
+
+  a,
+  button,
+  [role='button'],
+  label,
+  summary,
+  select {
+    touch-action: manipulation;
+  }
+
+  button:not(:disabled),
+  [role='button'],
+  summary,
+  select {
+    cursor: pointer;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-gold-600);
+    outline-offset: 2px;
+  }
+
+  input[type='number']::-webkit-inner-spin-button,
+  input[type='number']::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+
+  input[type='number'] {
+    -moz-appearance: textfield;
+  }
+
+  ::selection {
+    background: var(--color-gold-200);
+  }
+}
+
+/* خلفية مخططة للأوقات المحجوزة — تمييز غير معتمد على اللون فقط */
+@utility striped {
+  background-image: repeating-linear-gradient(
+    -45deg,
+    rgb(12 10 9 / 0.06) 0 6px,
+    transparent 6px 12px
+  );
+}
+
+@utility skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--color-surface-muted) 0%,
+    #faf8f3 50%,
+    var(--color-surface-muted) 100%
+  );
+  background-size: 200% 100%;
+  animation: var(--animate-shimmer);
+}
+
+/* تُستخدم فقط على عناصر بلا حشوة أخرى في نفس الاتجاه (تستبدلها) */
+@utility safe-bottom {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+@utility safe-top {
+  padding-top: env(safe-area-inset-top);
+}
+
+@utility no-scrollbar {
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

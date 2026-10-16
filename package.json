@@ -1,0 +1,36 @@
+{
+  "name": "golden-touch",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Golden Touch — نظام إدارة مواعيد صالون الحلاقة",
+  "workspaces": [
+    "apps/api",
+    "apps/web"
+  ],
+  "engines": {
+    "node": ">=22.18.0"
+  },
+  "scripts": {
+    "dev": "concurrently -k -n api,web -c yellow,cyan \"npm:dev:api\" \"npm:dev:web\"",
+    "dev:web": "npm run dev -w @golden-touch/web",
+    "dev:api": "npm run start:dev -w @golden-touch/api",
+    "build": "npm run build -w @golden-touch/api && npm run build -w @golden-touch/web",
+    "start": "node scripts/start-prod.mjs",
+    "lint": "npm run lint -w @golden-touch/api && npm run lint -w @golden-touch/web",
+    "test": "npm run test -w @golden-touch/api && npm run test -w @golden-touch/web",
+    "test:e2e": "npm run test:e2e -w @golden-touch/api",
+    "typecheck": "npm run typecheck -w @golden-touch/api && npm run typecheck -w @golden-touch/web",
+    "db:migrate": "npm run db:migrate -w @golden-touch/api",
+    "db:migrate:dev": "npm run db:migrate:dev -w @golden-touch/api",
+    "db:seed": "npm run db:seed -w @golden-touch/api",
+    "db:studio": "npm run db:studio -w @golden-touch/api",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
+  },
+  "devDependencies": {
+    "concurrently": "^10.0.6",
+    "cross-env": "^10.1.0",
+    "prettier": "^3.9.10",
+    "prettier-plugin-tailwindcss": "^0.8.1"
+  }
+}

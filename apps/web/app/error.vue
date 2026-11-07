@@ -38,4 +38,5 @@ async function goHome() {
     </div>
     <AppButton icon="calendar" :disabled="leaving" @click="goHome">العودة إلى الجدول</AppButton>
   </main>
+  <ExitConfirmDialog />
 </template>

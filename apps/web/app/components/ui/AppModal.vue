@@ -1,7 +1,9 @@
 <script setup lang="ts">
+import type { BackLayerHandle } from '~/utils/back-stack'
+
 /**
  * حوار متجاوب: ورقة سفلية (bottom sheet) على الموبايل، ونافذة وسطية على الشاشات الأكبر.
- * يغلق بـ Esc أو بالنقر على الخلفية أو بسحب الورقة لأسفل (موبايل)، يقفل تمرير الصفحة،
+ * يغلق بـ Esc أو بالنقر على الخلفية أو بسحب الورقة لأسفل (موبايل) أو بزر الرجوع، يقفل تمرير الصفحة،
  * ويعيد التركيز للعنصر السابق. الدخول والخروج بحركة (CSS: .modal-* في main.css).
  *
  * footerKey: غيّره عند تبدّل مجموعة أزرار التذييل (وضع آخر) فتتبدّل بتلاشٍ وبحركة ارتفاع.
@@ -47,24 +49,53 @@ function onKeydown(event: KeyboardEvent) {
 /** قفل التمرير بعدّاد مشترك بين الحوارات (انظر utils/scroll-lock.ts) */
 let releaseScroll: (() => void) | null = null
 
-watch(open, async (isOpen) => {
-  if (!import.meta.client) return
-  if (isOpen) {
-    previouslyFocused = document.activeElement as HTMLElement | null
-    releaseScroll ??= acquireScrollLock()
-    await nextTick()
-    const target =
-      panel.value?.querySelector<HTMLElement>('[autofocus], [data-autofocus]') ?? panel.value
-    target?.focus({ preventScroll: true })
-  } else {
-    releaseScroll?.()
-    releaseScroll = null
-    previouslyFocused?.focus?.({ preventScroll: true })
-  }
-})
+/**
+ * زر الرجوع في الموبايل يغلق الحوار بدل مغادرة الصفحة (انظر utils/back-stack.ts).
+ * كل حوار مفتوح طبقة في سجل المتصفح؛ الرجوع المنفَّذ مع persistent لا يغلقه.
+ */
+let backLayer: BackLayerHandle | null = null
+
+function acquireBackLayer() {
+  backLayer ??= openBackLayer({
+    close: () => {
+      open.value = false
+      emit('close')
+    },
+    canClose: () => !props.persistent,
+  })
+}
+
+function releaseBackLayer() {
+  backLayer?.release()
+  backLayer = null
+}
+
+watch(
+  open,
+  async (isOpen) => {
+    if (!import.meta.client) return
+    if (isOpen) {
+      previouslyFocused = document.activeElement as HTMLElement | null
+      releaseScroll ??= acquireScrollLock()
+      acquireBackLayer()
+      await nextTick()
+      const target =
+        panel.value?.querySelector<HTMLElement>('[autofocus], [data-autofocus]') ?? panel.value
+      target?.focus({ preventScroll: true })
+    } else {
+      releaseScroll?.()
+      releaseScroll = null
+      releaseBackLayer()
+      previouslyFocused?.focus?.({ preventScroll: true })
+    }
+  },
+  // حوار يصل مفتوحاً من البداية (قيمة ابتدائية true) يُسجَّل أيضاً
+  { immediate: true },
+)
 
 onBeforeUnmount(() => {
   releaseScroll?.()
+  releaseBackLayer()
 })
 
 const widths = { sm: 'sm:max-w-sm', md: 'sm:max-w-lg', lg: 'sm:max-w-2xl' }

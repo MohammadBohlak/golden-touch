@@ -2,6 +2,27 @@ import tailwindcss from '@tailwindcss/vite'
 
 const BRAND_BLACK = '#0C0A09'
 
+/**
+ * بوّابة popstate: سكربت مضمَّن في الـ head يعمل قبل حزمة التطبيق فيلفّ كل مستمعي popstate
+ * (vue-router وNuxt وغيرهما) بفحص واحد لكل حدث. السبب: عند الهدف نفسه (window) تُنفَّذ المستمعات
+ * بترتيب التسجيل لا بترتيب الالتقاط، ومستمع vue-router يُسجَّل قبل أي إضافة — فلا يمكن إيقافه
+ * من داخل التطبيق. البوّابة (`window.__gtPopGate`) تُركَّب في plugins/00.back-navigation.client.ts؛
+ * حين تعيد true يُبتلع الحدث ولا يصل لأي مستمع (مدخل حوار/حارس خروج، انظر utils/back-stack.ts).
+ */
+const POPSTATE_GATE = `(function(){
+var add=window.addEventListener,remove=window.removeEventListener,wrappers=new WeakMap(),decisions=new WeakMap();
+function gate(e){if(decisions.has(e))return decisions.get(e);var g=window.__gtPopGate,r=false;try{r=!!(g&&g(e))}catch(_){}decisions.set(e,r);return r}
+window.__gtPopGateReady=true;
+window.addEventListener=function(type,listener,options){
+if(type==='popstate'&&listener){var w=wrappers.get(listener);
+if(!w){w=function(e){if(gate(e))return;return typeof listener==='function'?listener.call(this,e):listener.handleEvent(e)};wrappers.set(listener,w)}
+return add.call(this,type,w,options)}
+return add.call(this,type,listener,options)};
+window.removeEventListener=function(type,listener,options){
+if(type==='popstate'&&listener&&wrappers.has(listener))listener=wrappers.get(listener);
+return remove.call(this,type,listener,options)};
+})();`
+
 export default defineNuxtConfig({
   compatibilityDate: '2026-10-01',
   ssr: true,
@@ -21,6 +42,7 @@ export default defineNuxtConfig({
     pageTransition: { name: 'page-fade', mode: 'out-in' },
     layoutTransition: { name: 'layout', mode: 'out-in' },
     head: {
+      script: [{ innerHTML: POPSTATE_GATE, tagPosition: 'head', tagPriority: 'critical' }],
       htmlAttrs: { lang: 'ar', dir: 'rtl' },
       title: 'Golden Touch',
       titleTemplate: '%s · Golden Touch',

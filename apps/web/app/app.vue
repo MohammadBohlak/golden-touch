@@ -9,4 +9,5 @@ useHead({
   <NuxtLayout>
     <NuxtPage />
   </NuxtLayout>
+  <ExitConfirmDialog />
 </template>

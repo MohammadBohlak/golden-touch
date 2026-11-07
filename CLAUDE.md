@@ -33,6 +33,7 @@
 - الألوان من الأسماء الدلالية في `assets/css/main.css` (`canvas`, `surface`, `fg`, `fg-muted`, `line`, `gold-*`, `ink-*`) — لا قيم hex داخل المكوّنات.
 - كل مكوّن UI يقبل `class` ويدمجها عبر `cn()`.
 - **حالة الحوارات محلية في الصفحة** وليست في الـ store.
+- **زر الرجوع (موبايل):** كل حوار/ورقة/تراكب يمرّ عبر `AppModal` فقط (لا حوارات مخصّصة) — فيصير تلقائياً طبقة في سجل المتصفح (`utils/back-stack.ts`): الرجوع يغلقه ولا يغادر الصفحة، وبالرجوع من أول صفحة يظهر `ExitConfirmDialog`. أي تراكب جديد خارج `AppModal` يجب أن يستعمل `openBackLayer()` ويستدعي `release()` عند إغلاقه. لا تلمس `history.pushState/back` يدوياً، والتنقل البرمجي (`navigateTo`) آمن أثناء وجود حوارات (الحارس `prepareNavigation`). اختبار: `tests/back-stack.test.ts`.
 - النماذج: vee-validate + yup، مع `FormField` (يعرض الخطأ بعد اللمس). الحقول الرقمية/المالية تقبل الأرقام العربية (`parseInteger`).
 - الصفحات تعلن صلاحيتها بـ `definePageMeta({ permission })`؛ القوائم من `config/navigation.ts`؛ الأزرار بـ `v-perm` أو `usePermission().has`.
 - أهداف اللمس ≥ 44px، حقول بارتفاع 48px ونص 16px (يمنع تكبير iOS).

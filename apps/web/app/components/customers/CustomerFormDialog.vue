@@ -8,6 +8,7 @@ const open = defineModel<boolean>('open', { default: false })
 const emit = defineEmits<{ saved: [customer: CustomerRef] }>()
 
 const { $api } = useNuxtApp()
+const { supported: contactsSupported } = useContactPicker()
 const toast = useToast()
 const serverError = ref('')
 const isEdit = computed(() => Boolean(props.customer))
@@ -89,7 +90,11 @@ const onSubmit = handleSubmit(async (values) => {
           placeholder="09xx xxx xxx"
           :invalid="invalid"
           :aria-describedby="describedBy"
-        />
+        >
+          <template v-if="contactsSupported" #end>
+            <PhoneContactButton @pick="field['onUpdate:modelValue']($event)" />
+          </template>
+        </AppInput>
       </FormField>
       <FormField
         v-slot="{ field, id, invalid, describedBy }"

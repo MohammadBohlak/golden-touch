@@ -50,25 +50,6 @@ async function remove(service: Service) {
     toast.error(toApiError(error).message)
   }
 }
-
-/** تبديل ترتيب خدمتين ثم إعادة ترقيم القائمة (1..n) وحفظ ما تغيّر فقط */
-async function move(service: Service, direction: -1 | 1) {
-  const list = [...servicesStore.items]
-  const index = list.findIndex((s) => s.id === service.id)
-  const target = index + direction
-  if (target < 0 || target >= list.length) return
-  ;[list[index], list[target]] = [list[target]!, list[index]!]
-  const changes = list
-    .map((s, i) => ({ id: s.id, sortOrder: i + 1, changed: s.sortOrder !== i + 1 }))
-    .filter((c) => c.changed)
-  servicesStore.items = list.map((s, i) => ({ ...s, sortOrder: i + 1 }))
-  try {
-    await Promise.all(changes.map((c) => servicesStore.update(c.id, { sortOrder: c.sortOrder })))
-  } catch (error) {
-    toast.error(toApiError(error).message)
-    await servicesStore.ensure(true)
-  }
-}
 </script>
 
 <template>
@@ -111,7 +92,7 @@ async function move(service: Service, direction: -1 | 1) {
         :stagger="35"
       >
         <li
-          v-for="(service, index) in servicesStore.items"
+          v-for="service in servicesStore.items"
           :key="service.id"
           :class="
             cn(
@@ -120,31 +101,6 @@ async function move(service: Service, direction: -1 | 1) {
             )
           "
         >
-          <div v-if="can('services.update')" class="flex flex-col">
-            <button
-              type="button"
-              class="grid size-8 place-items-center rounded-lg text-fg-muted hover:bg-surface-muted disabled:opacity-30"
-              :disabled="index === 0"
-              :aria-label="`نقل ${service.name} للأعلى`"
-              @click="move(service, -1)"
-            >
-              <AppIcon name="chevron-down" :size="16" class="rotate-180" />
-            </button>
-            <button
-              type="button"
-              class="grid size-8 place-items-center rounded-lg text-fg-muted hover:bg-surface-muted disabled:opacity-30"
-              :disabled="index === servicesStore.items.length - 1"
-              :aria-label="`نقل ${service.name} للأسفل`"
-              @click="move(service, 1)"
-            >
-              <AppIcon name="chevron-down" :size="16" />
-            </button>
-          </div>
-          <span
-            class="grid size-12 shrink-0 place-items-center rounded-xl bg-ink-950 text-gold-300"
-          >
-            <AppIcon name="scissors" />
-          </span>
           <div class="min-w-0 flex-1">
             <p class="flex flex-wrap items-center gap-2 font-bold">
               {{ service.name }}

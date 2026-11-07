@@ -10,6 +10,7 @@ const customerId = defineModel<string | null | undefined>('customerId')
 const selected = defineModel<CustomerRef | null>('selected', { default: null })
 
 const { $api } = useNuxtApp()
+const { supported: contactsSupported } = useContactPicker()
 const { setFieldValue, values } = useFormContext()
 
 const query = computed(() => {
@@ -107,7 +108,11 @@ function clear() {
             placeholder="09xx xxx xxx"
             :invalid="invalid"
             :aria-describedby="describedBy"
-          />
+          >
+            <template v-if="contactsSupported" #end>
+              <PhoneContactButton @pick="field['onUpdate:modelValue']($event)" />
+            </template>
+          </AppInput>
         </FormField>
 
         <ExpandTransition>

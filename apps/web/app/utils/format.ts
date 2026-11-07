@@ -89,3 +89,21 @@ export function initials(name: string): string {
     .map((part) => part[0] ?? '')
     .join(' ')
 }
+
+/**
+ * رقم من جهات اتصال الجهاز → صيغة المشروع المحلية: الأرقام السورية الدولية (+963 / 00963 / 963)
+ * تصير 09xxxxxxxx كي لا يُسجَّل الزبون مرتين بصيغتين، وبقية الأرقام تبقى كما هي (مع "+" إن وُجد).
+ * يعيد null إن لم يبقَ رقم صالح. بلا فراغات ولا رموز.
+ */
+export function toLocalPhone(raw: string): string | null {
+  const latin = toLatinDigits(raw).trim()
+  const digits = latin.replace(/\D/g, '')
+  if (digits.length < 6 || digits.length > 18) return null
+  const international = latin.startsWith('+') || digits.startsWith('00')
+  const national = digits.startsWith('00') ? digits.slice(2) : digits
+  if (national.startsWith('963') && (international || national.length === 12)) {
+    const rest = national.slice(3).replace(/^0+/, '')
+    return rest ? `0${rest}` : null
+  }
+  return latin.startsWith('+') ? `+${national}` : digits
+}

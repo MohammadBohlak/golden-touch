@@ -82,104 +82,120 @@ async function move(service: Service, direction: -1 | 1) {
       </template>
     </PageHeader>
 
-    <LoadingState v-if="loading && !servicesStore.loaded" :rows="4" />
-    <ErrorState v-else-if="errorMessage" :message="errorMessage" @retry="refresh" />
-    <EmptyState
-      v-else-if="!servicesStore.items.length"
-      icon="scissors"
-      title="لا توجد خدمات"
-      description="أضف أول خدمة مع سعرها ومدتها."
-    >
-      <AppButton
-        v-if="can('services.create')"
-        variant="secondary"
-        size="sm"
-        icon="plus"
-        @click="openCreate"
-        >خدمة جديدة</AppButton
+    <FadeTransition>
+      <LoadingState v-if="loading && !servicesStore.loaded" key="loading" :rows="4" />
+      <ErrorState v-else-if="errorMessage" key="error" :message="errorMessage" @retry="refresh" />
+      <EmptyState
+        v-else-if="!servicesStore.items.length"
+        key="empty"
+        icon="scissors"
+        title="لا توجد خدمات"
+        description="أضف أول خدمة مع سعرها ومدتها."
       >
-    </EmptyState>
+        <AppButton
+          v-if="can('services.create')"
+          variant="secondary"
+          size="sm"
+          icon="plus"
+          @click="openCreate"
+          >خدمة جديدة</AppButton
+        >
+      </EmptyState>
 
-    <ul v-else class="flex flex-col gap-2.5">
-      <li
-        v-for="(service, index) in servicesStore.items"
-        :key="service.id"
-        :class="
-          cn(
-            'flex items-center gap-3 rounded-2xl bg-surface p-3 shadow-card',
-            !service.isActive && 'opacity-70',
-          )
-        "
+      <ListTransition
+        v-else
+        key="list"
+        tag="ul"
+        class="relative flex flex-col gap-2.5"
+        appear
+        :stagger="35"
       >
-        <div v-if="can('services.update')" class="flex flex-col">
-          <button
-            type="button"
-            class="grid size-8 place-items-center rounded-lg text-fg-muted hover:bg-surface-muted disabled:opacity-30"
-            :disabled="index === 0"
-            :aria-label="`نقل ${service.name} للأعلى`"
-            @click="move(service, -1)"
-          >
-            <AppIcon name="chevron-down" :size="16" class="rotate-180" />
-          </button>
-          <button
-            type="button"
-            class="grid size-8 place-items-center rounded-lg text-fg-muted hover:bg-surface-muted disabled:opacity-30"
-            :disabled="index === servicesStore.items.length - 1"
-            :aria-label="`نقل ${service.name} للأسفل`"
-            @click="move(service, 1)"
-          >
-            <AppIcon name="chevron-down" :size="16" />
-          </button>
-        </div>
-        <span class="grid size-12 shrink-0 place-items-center rounded-xl bg-ink-950 text-gold-300">
-          <AppIcon name="scissors" />
-        </span>
-        <div class="min-w-0 flex-1">
-          <p class="flex flex-wrap items-center gap-2 font-bold">
-            {{ service.name }}
-            <AppBadge v-if="!service.isActive" tone="neutral">معطّلة</AppBadge>
-            <AppBadge v-else-if="!service.price" tone="warning" icon="alert"
-              >السعر غير محدد</AppBadge
+        <li
+          v-for="(service, index) in servicesStore.items"
+          :key="service.id"
+          :class="
+            cn(
+              'flex items-center gap-3 rounded-2xl bg-surface p-3 shadow-card transition-opacity',
+              !service.isActive && 'opacity-70',
+            )
+          "
+        >
+          <div v-if="can('services.update')" class="flex flex-col">
+            <button
+              type="button"
+              class="grid size-8 place-items-center rounded-lg text-fg-muted hover:bg-surface-muted disabled:opacity-30"
+              :disabled="index === 0"
+              :aria-label="`نقل ${service.name} للأعلى`"
+              @click="move(service, -1)"
             >
-          </p>
-          <p class="text-sm text-fg-muted">
-            <span class="font-bold text-brand-ink tabular-nums">{{
-              formatMoney(service.price)
-            }}</span>
-            · {{ formatDuration(service.durationMinutes) }}
-          </p>
-        </div>
-        <div v-if="can('services.update')" class="flex items-center gap-1">
-          <AppButton
-            variant="ghost"
-            size="icon"
-            :icon="service.isActive ? 'eye-off' : 'eye'"
-            :aria-label="service.isActive ? `تعطيل ${service.name}` : `تفعيل ${service.name}`"
-            @click="toggle(service)"
-          />
-          <AppButton
-            variant="ghost"
-            size="icon"
-            icon="pencil"
-            :aria-label="`تعديل ${service.name}`"
-            @click="openEdit(service)"
-          />
-          <AppButton
-            v-if="can('services.delete')"
-            variant="ghost"
-            size="icon"
-            icon="trash"
-            class="text-danger"
-            :aria-label="`حذف ${service.name}`"
-            @click="remove(service)"
-          />
-        </div>
-      </li>
-    </ul>
+              <AppIcon name="chevron-down" :size="16" class="rotate-180" />
+            </button>
+            <button
+              type="button"
+              class="grid size-8 place-items-center rounded-lg text-fg-muted hover:bg-surface-muted disabled:opacity-30"
+              :disabled="index === servicesStore.items.length - 1"
+              :aria-label="`نقل ${service.name} للأسفل`"
+              @click="move(service, 1)"
+            >
+              <AppIcon name="chevron-down" :size="16" />
+            </button>
+          </div>
+          <span
+            class="grid size-12 shrink-0 place-items-center rounded-xl bg-ink-950 text-gold-300"
+          >
+            <AppIcon name="scissors" />
+          </span>
+          <div class="min-w-0 flex-1">
+            <p class="flex flex-wrap items-center gap-2 font-bold">
+              {{ service.name }}
+              <Transition name="pop" mode="out-in">
+                <AppBadge v-if="!service.isActive" key="off" tone="neutral">معطّلة</AppBadge>
+                <AppBadge v-else-if="!service.price" key="noprice" tone="warning" icon="alert"
+                  >السعر غير محدد</AppBadge
+                >
+              </Transition>
+            </p>
+            <p class="text-sm text-fg-muted">
+              <span class="font-bold text-brand-ink tabular-nums">{{
+                formatMoney(service.price)
+              }}</span>
+              · {{ formatDuration(service.durationMinutes) }}
+            </p>
+          </div>
+          <div v-if="can('services.update')" class="flex items-center gap-1">
+            <AppButton
+              variant="ghost"
+              size="icon"
+              :icon="service.isActive ? 'eye-off' : 'eye'"
+              :aria-label="service.isActive ? `تعطيل ${service.name}` : `تفعيل ${service.name}`"
+              @click="toggle(service)"
+            />
+            <AppButton
+              variant="ghost"
+              size="icon"
+              icon="pencil"
+              :aria-label="`تعديل ${service.name}`"
+              @click="openEdit(service)"
+            />
+            <AppButton
+              v-if="can('services.delete')"
+              variant="ghost"
+              size="icon"
+              icon="trash"
+              class="text-danger"
+              :aria-label="`حذف ${service.name}`"
+              @click="remove(service)"
+            />
+          </div>
+        </li>
+      </ListTransition>
+    </FadeTransition>
 
-    <p v-if="!can('services.update')" class="text-center text-sm text-fg-muted">
-      تعديل الخدمات والأسعار متاح للمدير فقط.
-    </p>
+    <ExpandTransition>
+      <p v-if="!can('services.update')" class="text-center text-sm text-fg-muted">
+        تعديل الخدمات والأسعار متاح للمدير فقط.
+      </p>
+    </ExpandTransition>
 
     <ServiceFormDialog v-model:open="dialogOpen" :service="editing" />
   </div>

@@ -10,7 +10,7 @@ defineEmits<{ retry: [] }>()
     role="alert"
     class="flex flex-col items-center gap-3 rounded-2xl border border-red-200 bg-danger-soft px-5 py-8 text-center"
   >
-    <span class="grid size-12 place-items-center rounded-full bg-white text-danger">
+    <span class="grid size-12 animate-pop-in place-items-center rounded-full bg-white text-danger">
       <AppIcon name="alert" :size="24" />
     </span>
     <p class="max-w-sm font-semibold text-red-900">{{ message }}</p>

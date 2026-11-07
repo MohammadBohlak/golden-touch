@@ -17,7 +17,7 @@ async function onLogout() {
     <NuxtLink
       v-if="user"
       to="/account"
-      class="flex items-center gap-4 rounded-3xl bg-ink-950 p-4 text-white shadow-card"
+      class="flex items-center gap-4 rounded-3xl bg-ink-950 p-4 text-white shadow-card active:scale-[0.99]"
     >
       <span
         class="grid size-12 shrink-0 place-items-center rounded-full bg-gold-300 text-lg font-extrabold text-ink-950"

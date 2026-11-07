@@ -3,13 +3,28 @@ import type { NuxtError } from '#app'
 
 const props = defineProps<{ error: NuxtError }>()
 const notFound = computed(() => props.error.statusCode === 404)
+const leaving = ref(false)
 
 useHead({ title: notFound.value ? 'الصفحة غير موجودة' : 'حدث خطأ' })
+
+/** تتلاشى الصفحة أولاً ثم نعود للجدول، بدل اختفائها فجأة */
+async function goHome() {
+  if (!prefersReducedMotion()) {
+    leaving.value = true
+    await new Promise((resolve) => setTimeout(resolve, exitDuration(MOTION.base)))
+  }
+  await clearError({ redirect: '/' })
+}
 </script>
 
 <template>
   <main
-    class="flex min-h-dvh flex-col items-center justify-center gap-5 bg-canvas px-6 text-center"
+    :class="
+      cn(
+        'flex min-h-dvh animate-rise-in flex-col items-center justify-center gap-5 bg-canvas px-6 text-center transition-opacity duration-(--motion-base-exit) ease-in-soft',
+        leaving && 'opacity-0',
+      )
+    "
   >
     <img src="/logo.webp" alt="Golden Touch" width="120" height="96" class="h-auto w-30" />
     <div>
@@ -21,6 +36,6 @@ useHead({ title: notFound.value ? 'الصفحة غير موجودة' : 'حدث �
         {{ notFound ? 'ربما تغيّر الرابط أو حُذفت الصفحة.' : 'حاول مجدداً بعد قليل.' }}
       </p>
     </div>
-    <AppButton icon="calendar" @click="clearError({ redirect: '/' })">العودة إلى الجدول</AppButton>
+    <AppButton icon="calendar" :disabled="leaving" @click="goHome">العودة إلى الجدول</AppButton>
   </main>
 </template>

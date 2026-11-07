@@ -40,18 +40,20 @@ function onSaved(saved: Booking) {
       :subtitle="booking ? booking.customer.name : undefined"
       back="/"
     />
-    <LoadingState v-if="loading || (!booking && !errorMessage)" variant="spinner" />
-    <ErrorState v-else-if="errorMessage" :message="errorMessage" @retry="refresh" />
-    <template v-else-if="booking">
+    <!-- فروع مسطّحة بعنصر جذر واحد لكل حالة (شرط Transition) -->
+    <Transition name="fade" mode="out-in">
+      <LoadingState v-if="loading || (!booking && !errorMessage)" key="loading" variant="spinner" />
+      <ErrorState v-else-if="errorMessage" key="error" :message="errorMessage" @retry="refresh" />
       <EmptyState
-        v-if="booking.status !== 'ACTIVE'"
+        v-else-if="booking && booking.status !== 'ACTIVE'"
+        key="blocked"
         icon="info"
         title="لا يمكن تعديل موعد هذا الحجز"
         :description="`الحجز ${STATUS_META[booking.status].label}. أعد فتحه من تفاصيل الحجز أولاً.`"
       >
         <AppButton to="/" variant="secondary" size="sm">العودة للجدول</AppButton>
       </EmptyState>
-      <BookingForm v-else :booking="booking" @saved="onSaved" />
-    </template>
+      <BookingForm v-else-if="booking" key="form" :booking="booking" @saved="onSaved" />
+    </Transition>
   </div>
 </template>

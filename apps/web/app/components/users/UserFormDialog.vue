@@ -91,13 +91,15 @@ const onSubmit = handleSubmit(async (form) => {
       autocomplete="off"
       @submit="onSubmit"
     >
-      <p
-        v-if="serverError"
-        role="alert"
-        class="rounded-xl bg-danger-soft p-3 text-sm font-semibold text-red-800"
-      >
-        {{ serverError }}
-      </p>
+      <ExpandTransition>
+        <p
+          v-if="serverError"
+          role="alert"
+          class="rounded-xl bg-danger-soft p-3 text-sm font-semibold text-red-800"
+        >
+          {{ serverError }}
+        </p>
+      </ExpandTransition>
       <FormField v-slot="{ field, id, invalid, describedBy }" name="name" label="الاسم" required>
         <AppInput
           :id="id"
@@ -152,14 +154,7 @@ const onSubmit = handleSubmit(async (form) => {
           :aria-describedby="describedBy"
         >
           <template #end>
-            <button
-              type="button"
-              class="grid size-10 place-items-center rounded-lg text-fg-muted hover:bg-surface-muted"
-              :aria-label="showPassword ? 'إخفاء كلمة المرور' : 'إظهار كلمة المرور'"
-              @click="showPassword = !showPassword"
-            >
-              <AppIcon :name="showPassword ? 'eye-off' : 'eye'" :size="18" />
-            </button>
+            <PasswordToggle v-model="showPassword" />
           </template>
         </AppInput>
       </FormField>
@@ -173,13 +168,20 @@ const onSubmit = handleSubmit(async (form) => {
           @update:model-value="field['onUpdate:modelValue']($event)"
         />
       </FormField>
-      <p v-if="selectedRole" class="-mt-2 rounded-xl bg-surface-muted p-3 text-sm text-fg-muted">
-        {{
-          selectedRole.name === 'admin'
-            ? 'تحكم كامل: الحجوزات، الخدمات والأسعار، المستخدمون، الإعدادات.'
-            : 'إدارة الحجوزات والزبائن وعرض الإحصائيات، دون تعديل الأسعار أو المستخدمين.'
-        }}
-      </p>
+      <!-- تبدّل الدور: الوصف القديم ينطوي والجديد ينفتح -->
+      <ExpandTransition mode="out-in">
+        <p
+          v-if="selectedRole"
+          :key="selectedRole.name"
+          class="-mt-2 rounded-xl bg-surface-muted p-3 text-sm text-fg-muted"
+        >
+          {{
+            selectedRole.name === 'admin'
+              ? 'تحكم كامل: الحجوزات، الخدمات والأسعار، المستخدمون، الإعدادات.'
+              : 'إدارة الحجوزات والزبائن وعرض الإحصائيات، دون تعديل الأسعار أو المستخدمين.'
+          }}
+        </p>
+      </ExpandTransition>
       <AppSwitch
         :model-value="values.isActive ?? true"
         label="الحساب مفعّل"

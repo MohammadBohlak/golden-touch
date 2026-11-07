@@ -4,6 +4,7 @@ import type { Booking, DaySchedule, Gap } from '~/types/api'
 /**
  * خط زمني لليوم: الحجوزات والفراغات المتاحة مرتبة زمنياً بتمييز بصري واضح
  * (حجز = بطاقة بيضاء بحد ملوّن حسب الحالة، متاح = إطار ذهبي متقطع مع زر "احجز").
+ * إضافة/حذف/تحريك البطاقات (حجز يتحوّل إلى فراغ والعكس، مؤشر «الآن») تتم بحركة عبر ListTransition.
  */
 const props = defineProps<{ day: DaySchedule; minDuration: number; canCreate: boolean }>()
 defineEmits<{ open: [booking: Booking]; create: [startAt: string] }>()
@@ -15,6 +16,7 @@ type Item =
 
 const nowMs = computed(() => new Date(props.day.now).getTime())
 const showCancelled = ref(false)
+const cancelledId = useId()
 
 const cancelled = computed(() => props.day.bookings.filter((b) => b.status === 'CANCELLED'))
 
@@ -35,7 +37,8 @@ const items = computed<Item[]>(() => {
       }),
     ...props.day.gaps.map((gap) => ({
       kind: 'gap' as const,
-      key: `gap-${gap.start}`,
+      // الشكل جزء من المفتاح: تحوّل الفراغ من متاح إلى مضى (أو العكس) تلاشٍ بين بطاقتين لا استبدال فجائي
+      key: `gap-${gap.start}-${gapVariant(gap, props.minDuration, props.canCreate)}`,
       at: new Date(gap.start).getTime(),
       gap,
     })),
@@ -59,75 +62,103 @@ const hasBookable = computed(() =>
 
 <template>
   <section aria-label="جدول اليوم" class="flex flex-col gap-2.5">
-    <div
-      v-if="day.closed"
-      class="flex items-start gap-2 rounded-2xl bg-warning-soft p-3 text-sm font-semibold text-amber-900"
-    >
-      <AppIcon name="info" :size="18" class="mt-0.5" />
-      <span>هذا اليوم عطلة أسبوعية — ما زال بإمكانك تسجيل حجز استثنائي.</span>
-    </div>
-
-    <template v-for="item in items" :key="item.key">
-      <BookingCard
-        v-if="item.kind === 'booking'"
-        :booking="item.booking"
-        :timezone="day.timezone"
-        :live="item.live"
-        @open="$emit('open', $event)"
-      />
-      <GapCard
-        v-else-if="item.kind === 'gap'"
-        :gap="item.gap"
-        :timezone="day.timezone"
-        :min-duration="minDuration"
-        :can-create="canCreate"
-        @create="$emit('create', $event)"
-      />
-      <div v-else class="flex items-center gap-2 py-0.5" role="separator" aria-label="الوقت الحالي">
-        <span class="size-2.5 rounded-full bg-danger ring-4 ring-red-100" />
-        <span class="text-xs font-bold text-danger tabular-nums"
-          >الآن {{ formatTime(day.now, day.timezone) }}</span
-        >
-        <span class="h-0.5 flex-1 rounded bg-danger/70" />
-      </div>
-    </template>
-
-    <EmptyState
-      v-if="!items.length"
-      icon="calendar"
-      title="لا يوجد دوام في هذا اليوم"
-      description="غيّر ساعات الدوام من إعدادات الصالون."
-    />
-    <p v-else-if="!hasBookable && !day.bookings.length" class="text-center text-sm text-fg-muted">
-      انتهى دوام هذا اليوم.
-    </p>
-
-    <div v-if="cancelled.length" class="mt-2">
-      <button
-        type="button"
-        class="flex h-11 w-full items-center justify-between rounded-xl px-3 text-sm font-semibold text-fg-muted hover:bg-surface-muted"
-        :aria-expanded="showCancelled"
-        @click="showCancelled = !showCancelled"
+    <ExpandTransition>
+      <div
+        v-if="day.closed"
+        class="flex items-start gap-2 rounded-2xl bg-warning-soft p-3 text-sm font-semibold text-amber-900"
       >
-        <span class="flex items-center gap-2">
-          <AppIcon name="ban" :size="16" />
-          حجوزات ملغاة ({{ cancelled.length }})
-        </span>
-        <AppIcon
-          name="chevron-down"
-          :size="18"
-          :class="cn('transition-transform', showCancelled && 'rotate-180')"
-        />
-      </button>
-      <div v-if="showCancelled" class="mt-2 flex flex-col gap-2.5">
+        <AppIcon name="info" :size="18" class="mt-0.5" />
+        <span>هذا اليوم عطلة أسبوعية — ما زال بإمكانك تسجيل حجز استثنائي.</span>
+      </div>
+    </ExpandTransition>
+
+    <ListTransition class="relative flex flex-col gap-2.5 empty:hidden">
+      <template v-for="item in items" :key="item.key">
         <BookingCard
-          v-for="booking in cancelled"
-          :key="booking.id"
-          :booking="booking"
+          v-if="item.kind === 'booking'"
+          :booking="item.booking"
           :timezone="day.timezone"
+          :live="item.live"
           @open="$emit('open', $event)"
         />
+        <GapCard
+          v-else-if="item.kind === 'gap'"
+          :gap="item.gap"
+          :timezone="day.timezone"
+          :min-duration="minDuration"
+          :can-create="canCreate"
+          @create="$emit('create', $event)"
+        />
+        <div
+          v-else
+          class="flex items-center gap-2 py-0.5"
+          role="separator"
+          aria-label="الوقت الحالي"
+        >
+          <span class="relative grid size-2.5 place-items-center">
+            <span
+              class="absolute size-2.5 animate-pulse-ring rounded-full bg-danger"
+              aria-hidden="true"
+            />
+            <span class="relative size-2.5 rounded-full bg-danger ring-4 ring-red-100" />
+          </span>
+          <span class="text-xs font-bold text-danger tabular-nums"
+            >الآن {{ formatTime(day.now, day.timezone) }}</span
+          >
+          <span class="h-0.5 flex-1 rounded bg-danger/70" />
+        </div>
+      </template>
+    </ListTransition>
+
+    <ExpandTransition>
+      <EmptyState
+        v-if="!items.length"
+        icon="calendar"
+        title="لا يوجد دوام في هذا اليوم"
+        description="غيّر ساعات الدوام من إعدادات الصالون."
+      />
+    </ExpandTransition>
+    <ExpandTransition>
+      <p
+        v-if="items.length && !hasBookable && !day.bookings.length"
+        class="text-center text-sm text-fg-muted"
+      >
+        انتهى دوام هذا اليوم.
+      </p>
+    </ExpandTransition>
+
+    <ExpandTransition>
+      <div v-if="cancelled.length" class="mt-2">
+        <button
+          type="button"
+          class="flex h-11 w-full items-center justify-between rounded-xl px-3 text-sm font-semibold text-fg-muted hover:bg-surface-muted"
+          :aria-expanded="showCancelled"
+          :aria-controls="cancelledId"
+          @click="showCancelled = !showCancelled"
+        >
+          <span class="flex items-center gap-2">
+            <AppIcon name="ban" :size="16" />
+            حجوزات ملغاة ({{ cancelled.length }})
+          </span>
+          <AppIcon
+            name="chevron-down"
+            :size="18"
+            :class="cn('transition-transform', showCancelled && 'rotate-180')"
+          />
+        </button>
+        <!-- حشوة المحتوى (px-1/-mx-1) كي لا يقصّ overflow ظلّ البطاقات وحلقة التركيز -->
+        <Collapse :id="cancelledId" :open="showCancelled" inner-class="-mx-1 px-1 -mb-2 pb-2">
+          <ListTransition class="relative mt-2 flex flex-col gap-2.5">
+            <BookingCard
+              v-for="booking in cancelled"
+              :key="booking.id"
+              :booking="booking"
+              :timezone="day.timezone"
+              @open="$emit('open', $event)"
+            />
+          </ListTransition>
+        </Collapse>
       </div>
-    </div>
+    </ExpandTransition>
   </section>
 </template>

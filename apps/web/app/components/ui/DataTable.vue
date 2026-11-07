@@ -36,7 +36,8 @@ defineProps<{
             </th>
           </tr>
         </thead>
-        <tbody class="divide-y divide-line">
+        <!-- pin=false: <tr> لا يحتمل position:absolute، فيتلاشى الصف المحذوف في مكانه -->
+        <ListTransition tag="tbody" :pin="false" class="divide-y divide-line">
           <tr
             v-for="row in rows"
             :key="String(row[rowKey])"
@@ -50,11 +51,11 @@ defineProps<{
               <slot :name="`cell-${column.key}`" :row="row">{{ row[column.key] }}</slot>
             </td>
           </tr>
-        </tbody>
+        </ListTransition>
       </table>
     </div>
 
-    <ul class="flex flex-col gap-3 md:hidden" :aria-label="caption">
+    <ListTransition tag="ul" class="relative flex flex-col gap-3 md:hidden" :aria-label="caption">
       <li
         v-for="row in rows"
         :key="String(row[rowKey])"
@@ -75,6 +76,6 @@ defineProps<{
           </dl>
         </slot>
       </li>
-    </ul>
+    </ListTransition>
   </div>
 </template>

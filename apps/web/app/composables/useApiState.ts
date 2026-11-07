@@ -15,6 +15,11 @@ export function invalidateApiCache(prefix?: string): void {
   for (const key of memoryCache.keys()) if (key.startsWith(prefix)) memoryCache.delete(key)
 }
 
+/** وسائط متطابقة (قيم بسيطة أو كائنات من قيم بسيطة) */
+function sameArgs(a: unknown[], b: unknown[]): boolean {
+  return a.length === b.length && JSON.stringify(a) === JSON.stringify(b)
+}
+
 export interface UseApiStateOptions<TRaw, T, A extends unknown[]> {
   /** تنفيذ تلقائي عند التركيب (true أو مصفوفة وسائط) */
   immediate?: boolean | A
@@ -39,16 +44,24 @@ export function useApiState<TRaw, T = TRaw, A extends unknown[] = []>(
   const data = shallowRef(options.initialData ?? null) as Ref<T | null>
   const error = shallowRef<ApiError | null>(null)
   const loading = ref(Boolean(options.immediate))
+  /**
+   * true أثناء إعادة جلب بنفس الوسائط بعد وجود بيانات (تحديث صامت دوري أو بعد إجراء).
+   * الواجهة تُعتّم المحتوى فقط حين loading && !refreshing (تغيّر الوسائط: يوم/صفحة/فلتر آخر).
+   */
+  const refreshing = ref(false)
   const errorMessage = computed(() => error.value?.message ?? '')
 
   let controller: AbortController | null = null
   let lastArgs = [] as unknown as A
   let lastKey: string | undefined
+  let hasRun = false
 
   const keyFor = (args: A) =>
     typeof options.cacheKey === 'function' ? options.cacheKey(...args) : options.cacheKey
 
   async function run(args: A, force: boolean): Promise<T | null> {
+    const isRefresh = hasRun && data.value !== null && sameArgs(args, lastArgs)
+    hasRun = true
     lastArgs = args
     const key = keyFor(args)
     lastKey = key
@@ -67,6 +80,7 @@ export function useApiState<TRaw, T = TRaw, A extends unknown[] = []>(
     controller?.abort()
     const current = new AbortController()
     controller = current
+    refreshing.value = isRefresh
     loading.value = true
     error.value = null
 
@@ -88,6 +102,7 @@ export function useApiState<TRaw, T = TRaw, A extends unknown[] = []>(
       if (controller === current) {
         controller = null
         loading.value = false
+        refreshing.value = false
       }
     }
   }
@@ -100,6 +115,7 @@ export function useApiState<TRaw, T = TRaw, A extends unknown[] = []>(
     controller?.abort()
     controller = null
     loading.value = false
+    refreshing.value = false
   }
 
   function invalidate(): void {
@@ -114,5 +130,16 @@ export function useApiState<TRaw, T = TRaw, A extends unknown[] = []>(
   }
   if (getCurrentScope()) onScopeDispose(abort)
 
-  return { data, error, errorMessage, loading, execute, forceExecute, refresh, abort, invalidate }
+  return {
+    data,
+    error,
+    errorMessage,
+    loading,
+    refreshing,
+    execute,
+    forceExecute,
+    refresh,
+    abort,
+    invalidate,
+  }
 }

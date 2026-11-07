@@ -69,13 +69,15 @@ const onSubmit = handleSubmit(async (form) => {
     :persistent="isSubmitting"
   >
     <form id="service-form" class="flex flex-col gap-4" novalidate @submit="onSubmit">
-      <p
-        v-if="serverError"
-        role="alert"
-        class="rounded-xl bg-danger-soft p-3 text-sm font-semibold text-red-800"
-      >
-        {{ serverError }}
-      </p>
+      <ExpandTransition>
+        <p
+          v-if="serverError"
+          role="alert"
+          class="rounded-xl bg-danger-soft p-3 text-sm font-semibold text-red-800"
+        >
+          {{ serverError }}
+        </p>
+      </ExpandTransition>
       <FormField
         v-slot="{ field, id, invalid, describedBy }"
         name="name"

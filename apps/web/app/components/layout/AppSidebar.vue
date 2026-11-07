@@ -2,6 +2,14 @@
 const { items, isActive } = useNavigation('sidebar')
 const { user, logout, can } = useAuth()
 const confirmLogout = useConfirm().confirm
+const route = useRoute()
+
+// خلفية التحديد تنزلق بين العناصر؛ قبل جاهزيتها (HTML الخادم) يرسم الرابط النشط خلفيته بنفسه
+const navEl = ref<HTMLElement>()
+const indicator = useSlidingIndicator(navEl, '[aria-current="page"]', () => [
+  route.path,
+  items.value.length,
+])
 
 async function onLogout() {
   if (await confirmLogout({ title: 'تسجيل الخروج؟', confirmLabel: 'خروج' })) await logout()
@@ -23,8 +31,18 @@ async function onLogout() {
       <AppButton to="/bookings/new" variant="gold" block icon="plus">حجز جديد</AppButton>
     </div>
 
-    <nav class="flex-1 overflow-y-auto px-3">
-      <ul class="flex flex-col gap-1">
+    <nav ref="navEl" class="relative flex-1 overflow-y-auto px-3">
+      <!-- left/top: صفر فيزيائياً عمداً — الإزاحة تُقاس من الحافة اليسرى للحاوية في RTL أيضاً -->
+      <span
+        v-show="indicator.ready.value"
+        aria-hidden="true"
+        style="left: 0; top: 0"
+        :class="
+          cn('pointer-events-none absolute z-0 rounded-xl bg-white/10', indicator.motionClass.value)
+        "
+        :style="indicator.style.value"
+      />
+      <ul class="relative z-10 flex flex-col gap-1">
         <li v-for="item in items" :key="item.key">
           <NuxtLink
             :to="item.to"
@@ -33,7 +51,7 @@ async function onLogout() {
               cn(
                 'flex h-11 items-center gap-3 rounded-xl px-3 font-semibold transition-colors',
                 isActive(item)
-                  ? 'bg-white/10 text-gold-300'
+                  ? cn('text-gold-300', !indicator.ready.value && 'bg-white/10')
                   : 'text-ink-300 hover:bg-white/5 hover:text-white',
               )
             "

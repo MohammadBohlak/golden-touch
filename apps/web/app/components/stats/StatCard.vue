@@ -4,7 +4,9 @@ import type { IconName } from '~/utils/icons'
 const props = withDefaults(
   defineProps<{
     label: string
-    value: string
+    /** القيمة رقماً: تعدّ تصاعدياً عند الظهور وعند التغيّر، وتُعرض عبر format */
+    value: number
+    format?: (value: number) => string
     icon: IconName
     /** نسبة التغيّر عن الفترة السابقة */
     delta?: number | null
@@ -13,7 +15,7 @@ const props = withDefaults(
     hint?: string
     featured?: boolean
   }>(),
-  { delta: undefined, hint: undefined },
+  { delta: undefined, hint: undefined, format: (value: number) => String(value) },
 )
 
 const trend = computed(() => {
@@ -56,14 +58,14 @@ const trend = computed(() => {
     <p
       :class="cn('text-2xl leading-tight font-extrabold tabular-nums', featured && 'text-gold-300')"
     >
-      {{ value }}
+      <AnimatedNumber :value="value" :format="format" appear />
     </p>
     <div class="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
       <span
         v-if="trend"
         :class="
           cn(
-            'rounded-full px-2 py-0.5 font-bold tabular-nums',
+            'rounded-full px-2 py-0.5 font-bold tabular-nums transition-colors',
             trend.tone === 'good' &&
               (featured ? 'bg-green-500/20 text-green-300' : 'bg-success-soft text-green-800'),
             trend.tone === 'bad' &&

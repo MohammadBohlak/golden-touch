@@ -17,6 +17,9 @@ export default defineNuxtConfig({
   build: { transpile: ['pinia'] },
 
   app: {
+    // الاتجاه الفعلي يُضبط لكل تنقل في middleware/page-transition.global.ts؛ هذا الافتراضي للتحميل الأول
+    pageTransition: { name: 'page-fade', mode: 'out-in' },
+    layoutTransition: { name: 'layout', mode: 'out-in' },
     head: {
       htmlAttrs: { lang: 'ar', dir: 'rtl' },
       title: 'Golden Touch',

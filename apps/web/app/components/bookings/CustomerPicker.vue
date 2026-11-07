@@ -50,95 +50,101 @@ function clear() {
 </script>
 
 <template>
-  <div class="flex flex-col gap-3">
-    <!-- زبون مختار -->
-    <div
-      v-if="customerId && selected"
-      class="flex items-center gap-3 rounded-2xl border-2 border-ink-950 bg-surface p-3"
-    >
-      <span
-        class="grid size-11 shrink-0 place-items-center rounded-full bg-gold-300 font-bold text-ink-950"
-      >
-        {{ initials(selected.name) }}
-      </span>
-      <div class="min-w-0 flex-1">
-        <p class="truncate font-bold">{{ selected.name }}</p>
-        <p class="text-sm text-fg-muted tabular-nums" dir="ltr">
-          {{ selected.phone ?? 'بلا رقم هاتف' }}
-        </p>
-      </div>
-      <AppButton variant="secondary" size="sm" @click="clear">تغيير</AppButton>
-    </div>
-
-    <template v-else>
-      <FormField
-        v-slot="{ field, id, invalid, describedBy }"
-        name="customerName"
-        label="اسم الزبون"
-        required
-      >
-        <AppInput
-          :id="id"
-          v-bind="field"
-          icon="user"
-          autocomplete="off"
-          placeholder="ابحث باسم زبون سابق أو اكتب اسماً جديداً"
-          :invalid="invalid"
-          :aria-describedby="describedBy"
-          maxlength="80"
-        />
-      </FormField>
-      <FormField
-        v-slot="{ field, id, invalid, describedBy }"
-        name="customerPhone"
-        label="رقم الهاتف"
-        hint="اختياري — يفيد في التذكير عبر واتساب والتعرف على الزبون لاحقاً"
-      >
-        <AppInput
-          :id="id"
-          v-bind="field"
-          type="tel"
-          inputmode="tel"
-          dir="ltr"
-          icon="phone"
-          autocomplete="off"
-          placeholder="09xx xxx xxx"
-          :invalid="invalid"
-          :aria-describedby="describedBy"
-        />
-      </FormField>
-
+  <!-- زبون مختار ⇄ حقول الإدخال: تبدّل بتلاشٍ وارتفاع المنتقي يتغيّر بسلاسة -->
+  <AutoHeight>
+    <Transition name="fade" mode="out-in">
       <div
-        v-if="suggestions.length || loading"
-        class="rounded-2xl border border-line bg-surface p-2"
-        aria-live="polite"
+        v-if="customerId && selected"
+        key="selected"
+        class="flex items-center gap-3 rounded-2xl border-2 border-ink-950 bg-surface p-3"
       >
-        <p class="px-2 pt-1 pb-2 text-xs font-bold text-fg-muted">
-          {{ loading ? 'جارٍ البحث…' : 'زبائن مطابقون — اضغط للاختيار' }}
-        </p>
-        <ul class="flex flex-col">
-          <li v-for="customer in suggestions" :key="customer.id">
-            <button
-              type="button"
-              class="flex w-full items-center gap-3 rounded-xl p-2 text-start hover:bg-surface-muted"
-              @click="choose(customer)"
-            >
-              <span
-                class="grid size-9 shrink-0 place-items-center rounded-full bg-surface-muted text-sm font-bold"
-              >
-                {{ initials(customer.name) }}
-              </span>
-              <span class="min-w-0 flex-1">
-                <span class="block truncate font-semibold">{{ customer.name }}</span>
-                <span class="block text-xs text-fg-muted">
-                  <span dir="ltr">{{ customer.phone ?? '—' }}</span> · {{ customer.visits }} زيارة
-                </span>
-              </span>
-              <AppIcon name="plus" :size="18" class="text-brand-ink" />
-            </button>
-          </li>
-        </ul>
+        <span
+          class="grid size-11 shrink-0 place-items-center rounded-full bg-gold-300 font-bold text-ink-950"
+        >
+          {{ initials(selected.name) }}
+        </span>
+        <div class="min-w-0 flex-1">
+          <p class="truncate font-bold">{{ selected.name }}</p>
+          <p class="text-sm text-fg-muted tabular-nums" dir="ltr">
+            {{ selected.phone ?? 'بلا رقم هاتف' }}
+          </p>
+        </div>
+        <AppButton variant="secondary" size="sm" @click="clear">تغيير</AppButton>
       </div>
-    </template>
-  </div>
+
+      <div v-else key="fields" class="flex flex-col gap-3">
+        <FormField
+          v-slot="{ field, id, invalid, describedBy }"
+          name="customerName"
+          label="اسم الزبون"
+          required
+        >
+          <AppInput
+            :id="id"
+            v-bind="field"
+            icon="user"
+            autocomplete="off"
+            placeholder="ابحث باسم زبون سابق أو اكتب اسماً جديداً"
+            :invalid="invalid"
+            :aria-describedby="describedBy"
+            maxlength="80"
+          />
+        </FormField>
+        <FormField
+          v-slot="{ field, id, invalid, describedBy }"
+          name="customerPhone"
+          label="رقم الهاتف"
+          hint="اختياري — يفيد في التذكير عبر واتساب والتعرف على الزبون لاحقاً"
+        >
+          <AppInput
+            :id="id"
+            v-bind="field"
+            type="tel"
+            inputmode="tel"
+            dir="ltr"
+            icon="phone"
+            autocomplete="off"
+            placeholder="09xx xxx xxx"
+            :invalid="invalid"
+            :aria-describedby="describedBy"
+          />
+        </FormField>
+
+        <ExpandTransition>
+          <div
+            v-if="suggestions.length || loading"
+            class="rounded-2xl border border-line bg-surface p-2"
+            aria-live="polite"
+          >
+            <p class="px-2 pt-1 pb-2 text-xs font-bold text-fg-muted">
+              {{ loading ? 'جارٍ البحث…' : 'زبائن مطابقون — اضغط للاختيار' }}
+            </p>
+            <ListTransition tag="ul" class="relative flex flex-col">
+              <li v-for="customer in suggestions" :key="customer.id">
+                <button
+                  type="button"
+                  class="flex w-full items-center gap-3 rounded-xl p-2 text-start hover:bg-surface-muted"
+                  @click="choose(customer)"
+                >
+                  <span
+                    class="grid size-9 shrink-0 place-items-center rounded-full bg-surface-muted text-sm font-bold"
+                  >
+                    {{ initials(customer.name) }}
+                  </span>
+                  <span class="min-w-0 flex-1">
+                    <span class="block truncate font-semibold">{{ customer.name }}</span>
+                    <span class="block text-xs text-fg-muted">
+                      <span dir="ltr">{{ customer.phone ?? '—' }}</span> ·
+                      {{ customer.visits }} زيارة
+                    </span>
+                  </span>
+                  <AppIcon name="plus" :size="18" class="text-brand-ink" />
+                </button>
+              </li>
+            </ListTransition>
+          </div>
+        </ExpandTransition>
+      </div>
+    </Transition>
+  </AutoHeight>
 </template>

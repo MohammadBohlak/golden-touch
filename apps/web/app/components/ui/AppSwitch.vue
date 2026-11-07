@@ -18,7 +18,7 @@ const id = useId()
       :disabled="disabled"
       :class="
         cn(
-          'relative inline-flex h-7 w-12 shrink-0 items-center rounded-full transition-colors duration-200 disabled:opacity-50',
+          'relative inline-flex h-7 w-12 shrink-0 items-center rounded-full transition-colors duration-(--motion-base) ease-out-soft disabled:opacity-50',
           model ? 'bg-ink-950' : 'bg-line-strong',
         )
       "
@@ -27,7 +27,7 @@ const id = useId()
       <span
         :class="
           cn(
-            'absolute start-1 size-5 rounded-full shadow transition-transform duration-200',
+            'absolute start-1 size-5 rounded-full shadow transition-transform duration-(--motion-base) ease-spring',
             model ? 'bg-gold-300 ltr:translate-x-5 rtl:-translate-x-5' : 'bg-white',
           )
         "

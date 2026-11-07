@@ -4,6 +4,8 @@ import type { Availability, Slot } from '~/types/api'
 /**
  * شبكة أوقات البدء ليوم ومدة معيّنين مع تمييز بصري واضح:
  * متاح (أبيض بإطار) · محجوز (مخطط ومشطوب) · لا يتسع للمدة (باهت بإطار متقطع) · مضى (مخفي افتراضياً)
+ * الحركة: تبدّل اليوم/المدة بتلاشٍ (مفتاح الشبكة من بيانات الاستجابة لا من الطلب)، وإظهار «الأوقات
+ * الماضية» ينزلق، وتبدّل حالة الخانة بانتقال لون.
  */
 const props = defineProps<{
   date: string
@@ -19,13 +21,15 @@ const { $api } = useNuxtApp()
 const showPast = ref(false)
 const customTime = ref('')
 
-const { data, loading, errorMessage, execute, refresh } = useApiState(
+const { data, loading, refreshing, errorMessage, execute, refresh } = useApiState(
   (signal, date: string, duration: number) =>
     $api<Availability>('/bookings/availability', {
       query: { date, durationMinutes: duration, excludeId: props.excludeId },
       signal,
     }),
 )
+// نُعتّم الشبكة عند تغيّر اليوم/المدة فقط، لا عند التحديث بعد تعارض (409)
+const switching = computed(() => loading.value && !refreshing.value)
 
 watch(
   () => [props.date, props.durationMinutes] as const,
@@ -43,6 +47,11 @@ watch(data, (availability) => {
   const selected = availability.slots.find((s) => s.start === model.value)
   if (selected && selected.state !== 'available') model.value = null
 })
+
+/** مفتاح الشبكة من الاستجابة: يتبدّل (بتلاشٍ) حين تصل بيانات يوم/مدة جديدة، لا لحظة تغيّر الطلب */
+const gridKey = computed(() =>
+  data.value ? `${data.value.date}|${data.value.durationMinutes}` : 'none',
+)
 
 const counts = computed(() => {
   const slots = data.value?.slots ?? []
@@ -67,9 +76,19 @@ const periods = computed(() => {
   return groups.filter((g) => g.slots.length)
 })
 
+// «خارج الشبكة» لا يُحكم به قبل وصول الأوقات (وإلا يُفتح القسم عند تحميل حجز للتعديل ثم يبقى مفتوحاً)
 const selectedOutsideGrid = computed(
-  () => Boolean(model.value) && !(data.value?.slots ?? []).some((s) => s.start === model.value),
+  () =>
+    Boolean(model.value) &&
+    data.value !== null &&
+    !data.value.slots.some((s) => s.start === model.value),
 )
+
+// «وقت مخصص» يُفتح تلقائياً حين يكون الوقت المختار خارج الشبكة
+const customOpen = ref(selectedOutsideGrid.value)
+watch(selectedOutsideGrid, (outside) => {
+  if (outside) customOpen.value = true
+})
 
 const stateLabel: Record<Slot['state'], string> = {
   available: 'متاح',
@@ -104,114 +123,133 @@ function applyCustomTime() {
       </li>
     </ul>
 
-    <p
-      v-if="!durationMinutes"
-      class="rounded-2xl bg-surface-muted p-4 text-center text-sm text-fg-muted"
-    >
-      اختر الخدمة أولاً لعرض الأوقات المتاحة.
-    </p>
-
-    <LoadingState v-else-if="loading && !data" variant="spinner" label="جارٍ تحميل الأوقات…" />
-    <ErrorState v-else-if="errorMessage" :message="errorMessage" @retry="refresh" />
-
-    <template v-else-if="data">
-      <div
-        v-if="data.closed"
-        class="flex items-start gap-2 rounded-xl bg-warning-soft p-3 text-sm font-semibold text-amber-900"
+    <FadeTransition>
+      <p
+        v-if="!durationMinutes"
+        key="hint"
+        class="rounded-2xl bg-surface-muted p-4 text-center text-sm text-fg-muted"
       >
-        <AppIcon name="info" :size="18" class="mt-0.5" />
-        هذا اليوم عطلة أسبوعية، يمكنك الحجز استثنائياً.
-      </div>
+        اختر الخدمة أولاً لعرض الأوقات المتاحة.
+      </p>
 
-      <div
-        :class="cn('flex flex-col gap-4 transition-opacity', loading && 'opacity-60')"
-        :aria-busy="loading"
-      >
-        <div v-for="period in periods" :key="period.label">
-          <p class="mb-2 text-sm font-bold text-fg-muted">{{ period.label }}</p>
-          <div class="grid grid-cols-4 gap-2 sm:grid-cols-6">
-            <button
-              v-for="slot in period.slots"
-              :key="slot.start"
-              type="button"
-              :disabled="slot.state !== 'available'"
-              :aria-pressed="model === slot.start"
-              :aria-label="`${formatTime(slot.start, timezone)} — ${stateLabel[slot.state]}`"
-              :title="stateLabel[slot.state]"
-              :class="
-                cn(
-                  'h-12 rounded-xl text-[15px] font-bold tabular-nums transition-[background-color,border-color,transform]',
-                  slot.state === 'available' &&
-                    (model === slot.start
-                      ? 'bg-ink-950 text-gold-300 shadow-card'
-                      : cn(
-                          'border bg-surface text-fg hover:border-gold-500 active:scale-95',
-                          invalid ? 'border-red-300' : 'border-line-strong',
-                        )),
-                  slot.state === 'booked' &&
-                    'cursor-not-allowed bg-surface-muted striped text-fg-subtle line-through',
-                  slot.state === 'conflict' &&
-                    'cursor-not-allowed border border-dashed border-line-strong bg-surface-muted/70 text-fg-subtle',
-                  slot.state === 'past' && 'cursor-not-allowed text-fg-subtle/70',
-                )
-              "
-              @click="model = slot.start"
-            >
-              {{ formatClock(slot.start, timezone) }}
-            </button>
-          </div>
-        </div>
-      </div>
+      <LoadingState
+        v-else-if="loading && !data"
+        key="loading"
+        variant="spinner"
+        label="جارٍ تحميل الأوقات…"
+      />
+      <ErrorState v-else-if="errorMessage" key="error" :message="errorMessage" @retry="refresh" />
 
-      <div
-        v-if="counts.available === 0"
-        class="flex flex-col items-center gap-2 rounded-2xl bg-surface-muted p-4 text-center"
-      >
-        <p class="text-sm font-semibold">لا توجد أوقات متاحة لهذه المدة في هذا اليوم.</p>
-        <AppButton variant="secondary" size="sm" icon-end="chevron-right" @click="emit('nextDay')">
-          اليوم التالي
-        </AppButton>
-      </div>
-
-      <button
-        v-if="counts.past"
-        type="button"
-        class="self-start text-sm font-semibold text-brand-ink underline-offset-4 hover:underline"
-        @click="showPast = !showPast"
-      >
-        {{ showPast ? 'إخفاء الأوقات الماضية' : `إظهار الأوقات الماضية (${counts.past})` }}
-      </button>
-
-      <details class="group rounded-2xl border border-line bg-surface" :open="selectedOutsideGrid">
-        <summary
-          class="flex h-12 list-none items-center justify-between px-4 text-sm font-semibold"
-        >
-          <span class="flex items-center gap-2">
-            <AppIcon name="clock" :size="16" />
-            وقت مخصص (خارج الشبكة أو بعد الدوام)
-          </span>
-          <AppIcon
-            name="chevron-down"
-            :size="18"
-            class="transition-transform group-open:rotate-180"
-          />
-        </summary>
-        <div class="flex items-end gap-2 px-4 pb-4">
-          <div class="flex-1">
-            <label for="custom-time" class="sr-only">الوقت</label>
-            <AppInput id="custom-time" v-model="customTime" type="time" dir="ltr" />
-          </div>
-          <AppButton variant="secondary" :disabled="!customTime" @click="applyCustomTime"
-            >اعتماد</AppButton
+      <div v-else-if="data" key="slots" class="flex flex-col gap-3">
+        <ExpandTransition>
+          <div
+            v-if="data.closed"
+            class="flex items-start gap-2 rounded-xl bg-warning-soft p-3 text-sm font-semibold text-amber-900"
           >
-        </div>
-        <p
-          v-if="selectedOutsideGrid && model"
-          class="px-4 pb-4 text-sm font-semibold text-brand-ink"
-        >
-          الوقت المختار: {{ formatTime(model, timezone) }} — سيتحقق النظام من عدم التداخل عند الحفظ.
-        </p>
-      </details>
-    </template>
+            <AppIcon name="info" :size="18" class="mt-0.5" />
+            هذا اليوم عطلة أسبوعية، يمكنك الحجز استثنائياً.
+          </div>
+        </ExpandTransition>
+
+        <Transition name="fade" mode="out-in">
+          <div
+            :key="gridKey"
+            :class="cn('transition-opacity', switching && 'opacity-60')"
+            :aria-busy="loading"
+          >
+            <ListTransition class="relative flex flex-col gap-4">
+              <div v-for="period in periods" :key="period.label">
+                <p class="mb-2 text-sm font-bold text-fg-muted">{{ period.label }}</p>
+                <ListTransition class="relative grid grid-cols-4 gap-2 sm:grid-cols-6">
+                  <button
+                    v-for="slot in period.slots"
+                    :key="slot.start"
+                    type="button"
+                    :disabled="slot.state !== 'available'"
+                    :aria-pressed="model === slot.start"
+                    :aria-label="`${formatTime(slot.start, timezone)} — ${stateLabel[slot.state]}`"
+                    :title="stateLabel[slot.state]"
+                    :class="
+                      cn(
+                        'h-12 rounded-xl text-[15px] font-bold tabular-nums transition-[background-color,border-color,color,transform,box-shadow]',
+                        slot.state === 'available' &&
+                          (model === slot.start
+                            ? 'bg-ink-950 text-gold-300 shadow-card'
+                            : cn(
+                                'border bg-surface text-fg hover:border-gold-500 active:scale-95',
+                                invalid ? 'border-red-300' : 'border-line-strong',
+                              )),
+                        slot.state === 'booked' &&
+                          'cursor-not-allowed bg-surface-muted striped text-fg-subtle line-through',
+                        slot.state === 'conflict' &&
+                          'cursor-not-allowed border border-dashed border-line-strong bg-surface-muted/70 text-fg-subtle',
+                        slot.state === 'past' && 'cursor-not-allowed text-fg-subtle/70',
+                      )
+                    "
+                    @click="model = slot.start"
+                  >
+                    {{ formatClock(slot.start, timezone) }}
+                  </button>
+                </ListTransition>
+              </div>
+            </ListTransition>
+          </div>
+        </Transition>
+
+        <ExpandTransition>
+          <div
+            v-if="counts.available === 0"
+            class="flex flex-col items-center gap-2 rounded-2xl bg-surface-muted p-4 text-center"
+          >
+            <p class="text-sm font-semibold">لا توجد أوقات متاحة لهذه المدة في هذا اليوم.</p>
+            <AppButton
+              variant="secondary"
+              size="sm"
+              icon-end="chevron-right"
+              @click="emit('nextDay')"
+            >
+              اليوم التالي
+            </AppButton>
+          </div>
+        </ExpandTransition>
+
+        <ExpandTransition>
+          <button
+            v-if="counts.past"
+            type="button"
+            class="self-start text-sm font-semibold text-brand-ink underline-offset-4 hover:underline"
+            :aria-pressed="showPast"
+            @click="showPast = !showPast"
+          >
+            {{ showPast ? 'إخفاء الأوقات الماضية' : `إظهار الأوقات الماضية (${counts.past})` }}
+          </button>
+        </ExpandTransition>
+
+        <Disclosure v-model:open="customOpen">
+          <template #summary>
+            <AppIcon name="clock" :size="16" />
+            <span class="text-sm font-semibold">وقت مخصص (خارج الشبكة أو بعد الدوام)</span>
+          </template>
+          <div class="flex items-end gap-2">
+            <div class="flex-1">
+              <label for="custom-time" class="sr-only">الوقت</label>
+              <AppInput id="custom-time" v-model="customTime" type="time" dir="ltr" />
+            </div>
+            <AppButton variant="secondary" :disabled="!customTime" @click="applyCustomTime"
+              >اعتماد</AppButton
+            >
+          </div>
+          <ExpandTransition>
+            <p
+              v-if="selectedOutsideGrid && model"
+              class="pt-3 text-sm font-semibold text-brand-ink"
+            >
+              الوقت المختار: {{ formatTime(model, timezone) }} — سيتحقق النظام من عدم التداخل عند
+              الحفظ.
+            </p>
+          </ExpandTransition>
+        </Disclosure>
+      </div>
+    </FadeTransition>
   </div>
 </template>

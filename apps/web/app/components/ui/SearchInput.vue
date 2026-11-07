@@ -16,15 +16,19 @@ const model = defineModel<string>({ default: '' })
     enterkeyhint="search"
     autocomplete="off"
   >
-    <template v-if="model" #end>
-      <button
-        type="button"
-        class="grid size-10 place-items-center rounded-lg text-fg-muted hover:bg-surface-muted"
-        aria-label="مسح البحث"
-        @click="model = ''"
-      >
-        <AppIcon name="x" :size="16" />
-      </button>
+    <!-- الخانة موجودة دائماً كي لا تتغيّر حشوة الحقل؛ الزر نفسه يظهر ويختفي بنقرة صغيرة -->
+    <template #end>
+      <Transition name="pop">
+        <button
+          v-if="model"
+          type="button"
+          class="grid size-10 place-items-center rounded-lg text-fg-muted hover:bg-surface-muted"
+          aria-label="مسح البحث"
+          @click="model = ''"
+        >
+          <AppIcon name="x" :size="16" />
+        </button>
+      </Transition>
     </template>
   </AppInput>
 </template>

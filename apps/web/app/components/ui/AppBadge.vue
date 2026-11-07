@@ -23,7 +23,7 @@ const tones: Record<BadgeTone, string> = {
   <span
     :class="
       cn(
-        'inline-flex h-6 shrink-0 items-center gap-1 rounded-full px-2.5 text-xs font-bold whitespace-nowrap ring-1 ring-inset',
+        'inline-flex h-6 shrink-0 items-center gap-1 rounded-full px-2.5 text-xs font-bold whitespace-nowrap ring-1 transition-[background-color,color,box-shadow] duration-(--motion-base) ease-out-soft ring-inset',
         tones[tone],
       )
     "

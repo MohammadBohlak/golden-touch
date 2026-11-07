@@ -1,4 +1,6 @@
 <script setup lang="ts">
+// ملاحظة: الجذر يجب أن يبقى عنصراً واحداً بلا تعليقات (شرط layoutTransition).
+// overflow-x-clip: إزاحة الصفحات أثناء الانتقال لا تُظهر شريط تمرير أفقي، وclip لا يكسر sticky.
 const route = useRoute()
 const settings = useSettingsStore()
 
@@ -11,7 +13,7 @@ useHead({ title: () => (route.meta.title as string | undefined) ?? 'الجدول
 </script>
 
 <template>
-  <div class="min-h-dvh lg:ps-64">
+  <div class="min-h-dvh overflow-x-clip lg:ps-64">
     <a
       href="#main"
       class="sr-only z-[70] rounded-lg bg-ink-950 px-4 py-2 text-white focus:not-sr-only focus:fixed focus:start-3 focus:top-3"

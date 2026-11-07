@@ -10,6 +10,18 @@ export const STATUS_META: Record<
   CANCELLED: { label: 'ملغي', tone: 'danger', icon: 'ban', accent: 'border-s-red-300' },
 }
 
+/** شكل بطاقة الفراغ: مضى · متاح للحجز · قصير/غير قابل للحجز. مصدر واحد للمفتاح والعرض. */
+export type GapVariant = 'past' | 'open' | 'short'
+
+export function gapVariant(
+  gap: { past: boolean; minutes: number },
+  minDuration: number,
+  canCreate: boolean,
+): GapVariant {
+  if (gap.past) return 'past'
+  return canCreate && gap.minutes >= minDuration ? 'open' : 'short'
+}
+
 export const STATUS_FILTERS: { value: BookingStatus | 'ALL'; label: string }[] = [
   { value: 'ALL', label: 'الكل' },
   { value: 'ACTIVE', label: 'قيد العمل' },

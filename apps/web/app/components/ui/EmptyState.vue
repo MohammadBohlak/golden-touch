@@ -11,7 +11,9 @@ withDefaults(defineProps<{ icon?: IconName; title: string; description?: string 
   <div
     class="flex flex-col items-center gap-3 rounded-2xl border border-dashed border-line-strong bg-surface/60 px-5 py-10 text-center"
   >
-    <span class="grid size-14 place-items-center rounded-2xl bg-gold-50 text-gold-700">
+    <span
+      class="grid size-14 animate-pop-in place-items-center rounded-2xl bg-gold-50 text-gold-700"
+    >
       <AppIcon :name="icon" :size="26" />
     </span>
     <div class="flex flex-col gap-1">

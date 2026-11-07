@@ -1,7 +1,11 @@
 <script setup lang="ts">
 import type { NavItem } from '~/config/navigation'
 
-defineProps<{ item: NavItem; active: boolean }>()
+/**
+ * `staticPill`: يرسم خلفية التحديد على الأيقونة نفسها (قبل جاهزية المؤشر المنزلق في BottomNav،
+ * أي في HTML الخادم) — بعدها يتولى المؤشر المنزلق رسمها.
+ */
+defineProps<{ item: NavItem; active: boolean; staticPill?: boolean }>()
 </script>
 
 <template>
@@ -10,16 +14,17 @@ defineProps<{ item: NavItem; active: boolean }>()
     :aria-current="active ? 'page' : undefined"
     :class="
       cn(
-        'flex h-full flex-col items-center justify-center gap-1 text-[11px] font-bold transition-colors',
+        'relative z-10 flex h-full flex-col items-center justify-center gap-1 text-[11px] font-bold transition-colors',
         active ? 'text-fg' : 'text-fg-subtle hover:text-fg-muted',
       )
     "
   >
     <span
+      data-pill
       :class="
         cn(
           'grid h-7 w-12 place-items-center rounded-full transition-colors',
-          active && 'bg-gold-100 text-gold-800',
+          active && (staticPill ? 'bg-gold-100 text-gold-800' : 'text-gold-800'),
         )
       "
     >

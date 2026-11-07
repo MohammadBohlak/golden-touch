@@ -31,22 +31,31 @@ const model = defineModel<string | null | undefined>()
     >
       <span class="flex w-full items-start justify-between gap-2">
         <span class="text-base leading-snug font-bold">{{ service.name }}</span>
-        <span
-          v-if="model === service.id"
-          class="grid size-6 shrink-0 place-items-center rounded-full bg-gold-300 text-ink-950"
-          aria-hidden="true"
-        >
-          <AppIcon name="check" :size="14" :stroke-width="3" />
+        <!-- المساحة محجوزة دائماً فلا يعاد التفاف اسم الخدمة عند الاختيار؛ العلامة تظهر بنقرة صغيرة -->
+        <span class="grid size-6 shrink-0 place-items-center" aria-hidden="true">
+          <Transition name="pop">
+            <span
+              v-if="model === service.id"
+              class="grid size-6 place-items-center rounded-full bg-gold-300 text-ink-950"
+            >
+              <AppIcon name="check" :size="14" :stroke-width="3" />
+            </span>
+          </Transition>
         </span>
       </span>
       <span class="flex flex-col gap-0.5 text-sm">
-        <span :class="model === service.id ? 'text-ink-300' : 'text-fg-muted'">
+        <span
+          :class="cn('transition-colors', model === service.id ? 'text-ink-300' : 'text-fg-muted')"
+        >
           <AppIcon name="clock" :size="13" class="-mt-0.5 inline" />
           {{ formatDuration(service.durationMinutes) }}
         </span>
         <span
           :class="
-            cn('font-bold tabular-nums', model === service.id ? 'text-gold-300' : 'text-brand-ink')
+            cn(
+              'font-bold tabular-nums transition-colors',
+              model === service.id ? 'text-gold-300' : 'text-brand-ink',
+            )
           "
         >
           {{ service.price ? formatMoney(service.price) : 'السعر غير محدد' }}

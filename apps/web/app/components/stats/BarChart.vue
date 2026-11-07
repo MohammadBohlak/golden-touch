@@ -3,6 +3,8 @@ import type { BarPoint } from '~/types/ui'
 
 /**
  * مخطط أعمدة خفيف بلا مكتبات: لمس/نقر عمود يعرض قيمته، مع ملخص نصي وجدول بديل لقارئ الشاشة.
+ * الحركة: الأعمدة تنمو من القاعدة عند أول عرض وعند وصول بيانات جديدة (تتابع خفيف)، والعمود
+ * المحدّد يتبدّل لونه وملخصه بسلاسة.
  */
 
 const props = withDefaults(
@@ -32,71 +34,98 @@ watch(
   () => props.points,
   () => (selectedKey.value = null),
 )
+
+// النمو: توقيع البيانات يعيد إنشاء الأعمدة عند الصفر ثم تنمو بانتقال
+const { grown, signature } = useGrowIn(() =>
+  props.points.map((p) => `${p.key}:${p.value}`).join('|'),
+)
+/** تأخير كل عمود عن سابقه (حتى 24 عموداً) كي يبدو النمو موجة لا قفزة واحدة */
+const STAGGER_MS = 14
+const MAX_STAGGERED = 24
 </script>
 
 <template>
   <figure class="flex flex-col gap-3">
     <figcaption class="flex items-baseline justify-between gap-2">
       <span class="font-bold">{{ title }}</span>
-      <span v-if="selected && total" class="text-sm text-fg-muted" aria-live="polite">
-        {{ selected.label }}:
-        <strong class="text-fg tabular-nums">{{ format(selected.value) }}</strong>
+      <span class="text-sm text-fg-muted" aria-live="polite">
+        <Transition name="fade" mode="out-in">
+          <span v-if="selected && total" :key="selected.key">
+            {{ selected.label }}:
+            <strong class="text-fg tabular-nums">{{ format(selected.value) }}</strong>
+          </span>
+        </Transition>
       </span>
     </figcaption>
 
-    <p v-if="!total" class="rounded-2xl bg-surface-muted py-10 text-center text-sm text-fg-muted">
-      لا توجد بيانات في هذه الفترة بعد.
-    </p>
-
-    <template v-else>
-      <div
-        class="flex items-end gap-[3px] border-b border-line"
-        :style="{ height: `${height}px` }"
-        aria-hidden="true"
+    <FadeTransition>
+      <p
+        v-if="!total"
+        key="empty"
+        class="rounded-2xl bg-surface-muted py-10 text-center text-sm text-fg-muted"
       >
-        <button
-          v-for="point in points"
-          :key="point.key"
-          type="button"
-          tabindex="-1"
-          class="group flex h-full min-w-0 flex-1 items-end"
-          @click="selectedKey = point.key"
-        >
-          <span
-            :class="
-              cn(
-                'block w-full rounded-t-md transition-[height,background-color] duration-300',
-                selected?.key === point.key ? 'bg-ink-950' : 'bg-gold-300 group-hover:bg-gold-400',
-                point.value === 0 && 'bg-line',
-              )
-            "
-            :style="{ height: `${Math.max(point.value ? 4 : 2, (point.value / max) * 100)}%` }"
-          />
-        </button>
-      </div>
-      <div class="flex gap-[3px] text-[10px] text-fg-subtle" aria-hidden="true">
-        <span
-          v-for="(point, i) in points"
-          :key="point.key"
-          class="min-w-0 flex-1 truncate text-center tabular-nums"
-        >
-          {{ i % labelEvery === 0 ? point.short : '' }}
-        </span>
-      </div>
+        لا توجد بيانات في هذه الفترة بعد.
+      </p>
 
-      <table class="sr-only">
-        <caption>
-          {{
-            title
-          }}
-        </caption>
-        <tbody>
-          <tr v-for="point in points" :key="point.key">
-            <th scope="row">{{ point.label }}</th>
-            <td>{{ format(point.value) }}</td>
-          </tr>
-        </tbody>
-      </table>
-    </template>
+      <div v-else key="chart" class="flex flex-col gap-3">
+        <div
+          :key="signature"
+          class="flex items-end gap-[3px] border-b border-line"
+          :style="{ height: `${height}px` }"
+          aria-hidden="true"
+        >
+          <button
+            v-for="(point, index) in points"
+            :key="point.key"
+            type="button"
+            tabindex="-1"
+            class="group flex h-full min-w-0 flex-1 items-end"
+            @click="selectedKey = point.key"
+          >
+            <span
+              :class="
+                cn(
+                  'block w-full origin-bottom rounded-t-md transition-[scale,background-color] duration-(--motion-slow) ease-out-soft',
+                  grown ? 'scale-y-100' : 'scale-y-0',
+                  selected?.key === point.key
+                    ? 'bg-ink-950'
+                    : 'bg-gold-300 group-hover:bg-gold-400',
+                  point.value === 0 && 'bg-line',
+                )
+              "
+              :style="{
+                height: `${Math.max(point.value ? 4 : 2, (point.value / max) * 100)}%`,
+                transitionDelay: grown
+                  ? `${Math.min(index, MAX_STAGGERED) * STAGGER_MS}ms, 0ms`
+                  : '0ms',
+              }"
+            />
+          </button>
+        </div>
+        <div class="flex gap-[3px] text-[10px] text-fg-subtle" aria-hidden="true">
+          <span
+            v-for="(point, i) in points"
+            :key="point.key"
+            class="min-w-0 flex-1 truncate text-center tabular-nums"
+          >
+            {{ i % labelEvery === 0 ? point.short : '' }}
+          </span>
+        </div>
+
+        <table class="sr-only">
+          <caption>
+            {{
+              title
+            }}
+          </caption>
+          <tbody>
+            <tr v-for="point in points" :key="point.key">
+              <th scope="row">{{ point.label }}</th>
+              <td>{{ format(point.value) }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </FadeTransition>
   </figure>
 </template>

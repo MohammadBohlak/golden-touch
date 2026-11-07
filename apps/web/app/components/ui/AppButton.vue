@@ -58,7 +58,7 @@ const iconSize = computed(() => (props.size === 'sm' || props.size === 'icon-sm'
 const classes = computed(() =>
   cn(
     'relative inline-flex items-center justify-center font-semibold whitespace-nowrap select-none',
-    'transition-[background-color,color,box-shadow,transform] duration-150 active:scale-[0.98]',
+    'transition-[background-color,color,box-shadow,transform,opacity] duration-(--motion-fast) ease-out-soft active:scale-[0.98]',
     'disabled:pointer-events-none disabled:opacity-50 aria-disabled:pointer-events-none aria-disabled:opacity-50',
     variants[props.variant],
     sizes[props.size],
@@ -88,9 +88,16 @@ const bindings = computed(() => {
 
 <template>
   <component :is="component" :class="classes" v-bind="bindings">
-    <AppSpinner v-if="loading" :size="iconSize" />
-    <AppIcon v-else-if="icon" :name="icon" :size="iconSize" />
+    <!-- المؤشر والأيقونة يتبادلان بتغيّر عرض سلس (لا قفزة في عرض الزر ولا في موضع النص) -->
+    <ExpandTransition axis="x" :duration="MOTION.fast">
+      <AppSpinner v-if="loading" :size="iconSize" />
+    </ExpandTransition>
+    <ExpandTransition axis="x" :duration="MOTION.fast">
+      <AppIcon v-if="icon && !loading" :name="icon" :size="iconSize" />
+    </ExpandTransition>
     <slot />
-    <AppIcon v-if="iconEnd && !loading" :name="iconEnd" :size="iconSize" />
+    <ExpandTransition axis="x" :duration="MOTION.fast">
+      <AppIcon v-if="iconEnd && !loading" :name="iconEnd" :size="iconSize" />
+    </ExpandTransition>
   </component>
 </template>

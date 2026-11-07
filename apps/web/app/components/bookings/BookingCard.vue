@@ -26,7 +26,7 @@ const amount = computed(() =>
     type="button"
     :class="
       cn(
-        'group flex w-full items-stretch gap-3 rounded-2xl border border-s-4 border-line bg-surface p-3 text-start shadow-card transition-[box-shadow,transform] active:scale-[0.99]',
+        'group flex w-full items-stretch gap-3 rounded-2xl border border-s-4 border-line bg-surface p-3 text-start shadow-card transition-[box-shadow,transform,background-color,border-color] active:scale-[0.99]',
         'hover:shadow-float',
         meta.accent,
         live && 'ring-2 ring-gold-300',
@@ -69,14 +69,17 @@ const amount = computed(() =>
         >
           {{ booking.customer.name }}
         </p>
-        <span
-          v-if="live"
-          class="inline-flex h-6 items-center gap-1 rounded-full bg-ink-950 px-2 text-[11px] font-bold text-gold-300"
-        >
-          <span class="size-1.5 animate-pulse rounded-full bg-gold-300" />
-          الآن
-        </span>
-        <StatusBadge v-else :status="booking.status" />
+        <Transition name="fade" mode="out-in">
+          <span
+            v-if="live"
+            key="live"
+            class="inline-flex h-6 items-center gap-1 rounded-full bg-ink-950 px-2 text-[11px] font-bold text-gold-300"
+          >
+            <span class="size-1.5 animate-pulse rounded-full bg-gold-300" />
+            الآن
+          </span>
+          <StatusBadge v-else :key="booking.status" :status="booking.status" />
+        </Transition>
       </div>
       <p class="truncate text-sm text-fg-muted">
         <span class="font-semibold text-fg">{{ booking.serviceName }}</span>
@@ -84,13 +87,15 @@ const amount = computed(() =>
         <template v-if="!showDate"> · حتى {{ formatTime(booking.endAt, timezone) }}</template>
       </p>
       <p
-        class="text-sm font-bold tabular-nums"
+        class="text-sm font-bold tabular-nums transition-colors"
         :class="booking.status === 'COMPLETED' ? 'text-success' : 'text-brand-ink'"
       >
         {{ formatMoney(amount) }}
-        <span v-if="booking.status === 'COMPLETED'" class="text-xs font-semibold text-fg-muted"
-          >مدفوع</span
-        >
+        <Transition name="fade">
+          <span v-if="booking.status === 'COMPLETED'" class="text-xs font-semibold text-fg-muted"
+            >مدفوع</span
+          >
+        </Transition>
       </p>
     </div>
 

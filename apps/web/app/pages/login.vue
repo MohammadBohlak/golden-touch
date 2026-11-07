@@ -38,14 +38,16 @@ const onSubmit = handleSubmit(async (values) => {
     <h1 class="text-xl font-extrabold">أهلاً بعودتك</h1>
     <p class="mt-1 text-[15px] text-fg-muted">سجّل الدخول لإدارة مواعيد الصالون</p>
 
-    <div
-      v-if="serverError"
-      role="alert"
-      class="mt-5 flex items-start gap-2 rounded-xl bg-danger-soft p-3 text-sm font-semibold text-red-800"
-    >
-      <AppIcon name="alert" :size="18" class="mt-0.5" />
-      {{ serverError }}
-    </div>
+    <ExpandTransition>
+      <div
+        v-if="serverError"
+        role="alert"
+        class="mt-5 flex items-start gap-2 rounded-xl bg-danger-soft p-3 text-sm font-semibold text-red-800"
+      >
+        <AppIcon name="alert" :size="18" class="mt-0.5" />
+        {{ serverError }}
+      </div>
+    </ExpandTransition>
 
     <form class="mt-6 flex flex-col gap-4" novalidate @submit="onSubmit">
       <FormField
@@ -77,15 +79,7 @@ const onSubmit = handleSubmit(async (values) => {
           :aria-describedby="describedBy"
         >
           <template #end>
-            <button
-              type="button"
-              class="grid size-10 place-items-center rounded-lg text-fg-muted hover:bg-surface-muted"
-              :aria-label="showPassword ? 'إخفاء كلمة المرور' : 'إظهار كلمة المرور'"
-              :aria-pressed="showPassword"
-              @click="showPassword = !showPassword"
-            >
-              <AppIcon :name="showPassword ? 'eye-off' : 'eye'" :size="18" />
-            </button>
+            <PasswordToggle v-model="showPassword" />
           </template>
         </AppInput>
       </FormField>

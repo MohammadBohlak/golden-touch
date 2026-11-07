@@ -40,9 +40,12 @@ const query = computed(() => {
   }
 })
 
-const { data, loading, errorMessage, execute, refresh } = useApiState(
+const { data, loading, refreshing, errorMessage, execute, refresh } = useApiState(
   (signal, q: typeof query.value) => $api<Paginated<Booking>>('/bookings', { query: q, signal }),
 )
+
+// نُعتّم القائمة عند تغيير الفلتر/الصفحة فقط، لا عند التحديث الصامت بعد إجراء
+const switching = computed(() => loading.value && !refreshing.value)
 
 watch([debouncedSearch, status, scope, from, to], () => (page.value = 1))
 watch(query, (q) => execute(q))
@@ -89,16 +92,18 @@ function onChanged() {
     <SearchInput v-model="search" placeholder="ابحث باسم الزبون أو الهاتف أو الخدمة" />
     <SegmentedControl v-model="scope" :options="scopes" label="الفترة" />
 
-    <div v-if="scope === 'range'" class="grid grid-cols-2 gap-3">
-      <div class="flex flex-col gap-1.5">
-        <label for="from" class="text-sm font-semibold">من تاريخ</label>
-        <AppInput id="from" v-model="from" type="date" :max="to || undefined" />
+    <ExpandTransition>
+      <div v-if="scope === 'range'" class="grid grid-cols-2 gap-3">
+        <div class="flex flex-col gap-1.5">
+          <label for="from" class="text-sm font-semibold">من تاريخ</label>
+          <AppInput id="from" v-model="from" type="date" :max="to || undefined" />
+        </div>
+        <div class="flex flex-col gap-1.5">
+          <label for="to" class="text-sm font-semibold">إلى تاريخ</label>
+          <AppInput id="to" v-model="to" type="date" :min="from || undefined" />
+        </div>
       </div>
-      <div class="flex flex-col gap-1.5">
-        <label for="to" class="text-sm font-semibold">إلى تاريخ</label>
-        <AppInput id="to" v-model="to" type="date" :min="from || undefined" />
-      </div>
-    </div>
+    </ExpandTransition>
 
     <div
       class="-mx-4 no-scrollbar flex gap-2 overflow-x-auto px-4"
@@ -125,51 +130,68 @@ function onChanged() {
       </button>
     </div>
 
-    <p v-if="data" class="text-sm text-fg-muted" aria-live="polite">{{ data.total }} حجز</p>
+    <ExpandTransition>
+      <p v-if="data" class="text-sm text-fg-muted" aria-live="polite">
+        <AnimatedNumber :value="data.total" :duration="400" /> حجز
+      </p>
+    </ExpandTransition>
 
-    <LoadingState v-if="loading && !data" :rows="6" />
-    <ErrorState v-else-if="errorMessage" :message="errorMessage" @retry="refresh" />
-    <EmptyState
-      v-else-if="data && !data.items.length"
-      icon="calendar"
-      title="لا توجد حجوزات مطابقة"
-      :description="
-        search ? 'جرّب كلمة بحث أخرى أو غيّر الفلاتر.' : 'ستظهر الحجوزات هنا بعد تسجيلها.'
-      "
-    >
-      <AppButton
-        v-if="can('bookings.create') && scope === 'upcoming'"
-        to="/bookings/new"
-        variant="secondary"
-        size="sm"
-        icon="plus"
+    <FadeTransition>
+      <LoadingState v-if="loading && !data" key="loading" :rows="6" />
+      <ErrorState v-else-if="errorMessage" key="error" :message="errorMessage" @retry="refresh" />
+      <EmptyState
+        v-else-if="data && !data.items.length"
+        key="empty"
+        icon="calendar"
+        title="لا توجد حجوزات مطابقة"
+        :description="
+          search ? 'جرّب كلمة بحث أخرى أو غيّر الفلاتر.' : 'ستظهر الحجوزات هنا بعد تسجيلها.'
+        "
       >
-        حجز جديد
-      </AppButton>
-    </EmptyState>
+        <AppButton
+          v-if="can('bookings.create') && scope === 'upcoming'"
+          to="/bookings/new"
+          variant="secondary"
+          size="sm"
+          icon="plus"
+        >
+          حجز جديد
+        </AppButton>
+      </EmptyState>
 
-    <div v-else :class="cn('flex flex-col gap-5 transition-opacity', loading && 'opacity-60')">
-      <section v-for="group in groups" :key="group.date" :aria-label="formatDateLong(group.date)">
-        <h2 class="mb-2 flex items-center gap-2 text-sm font-bold text-fg-muted">
-          <span>{{ relativeDayLabel(group.date, today) }}</span>
-          <span
-            v-if="relativeDayLabel(group.date, today) !== formatDateLong(group.date)"
-            class="font-medium"
+      <div
+        v-else-if="data"
+        key="list"
+        :class="cn('flex flex-col gap-5 transition-opacity', switching && 'opacity-60')"
+      >
+        <ListTransition class="relative flex flex-col gap-5">
+          <section
+            v-for="group in groups"
+            :key="group.date"
+            :aria-label="formatDateLong(group.date)"
           >
-            · {{ formatDateShort(group.date, true) }}
-          </span>
-        </h2>
-        <div class="flex flex-col gap-2.5">
-          <BookingCard
-            v-for="booking in group.items"
-            :key="booking.id"
-            :booking="booking"
-            :timezone="timezone"
-            @open="open"
-          />
-        </div>
-      </section>
-    </div>
+            <h2 class="mb-2 flex items-center gap-2 text-sm font-bold text-fg-muted">
+              <span>{{ relativeDayLabel(group.date, today) }}</span>
+              <span
+                v-if="relativeDayLabel(group.date, today) !== formatDateLong(group.date)"
+                class="font-medium"
+              >
+                · {{ formatDateShort(group.date, true) }}
+              </span>
+            </h2>
+            <ListTransition class="relative flex flex-col gap-2.5">
+              <BookingCard
+                v-for="booking in group.items"
+                :key="booking.id"
+                :booking="booking"
+                :timezone="timezone"
+                @open="open"
+              />
+            </ListTransition>
+          </section>
+        </ListTransition>
+      </div>
+    </FadeTransition>
 
     <AppPagination
       v-if="data"

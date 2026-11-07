@@ -174,168 +174,175 @@ async function remove() {
 </script>
 
 <template>
-  <AppModal v-model:open="open" :persistent="busy">
+  <AppModal v-model:open="open" :persistent="busy" :footer-key="mode">
     <template #header>
       <div v-if="b" class="flex flex-col gap-1.5">
         <div class="flex flex-wrap items-center gap-2">
           <h2 class="text-xl font-extrabold">{{ b.customer.name }}</h2>
-          <StatusBadge :status="b.status" />
+          <Transition name="fade" mode="out-in">
+            <StatusBadge :key="b.status" :status="b.status" />
+          </Transition>
         </div>
         <p class="text-sm text-fg-muted">{{ dateLabel }} · {{ timeLabel }}</p>
       </div>
     </template>
 
     <div v-if="b" class="flex flex-col gap-4">
-      <div
-        v-if="error"
-        role="alert"
-        class="flex items-start gap-2 rounded-xl bg-danger-soft p-3 text-sm font-semibold text-red-800"
-      >
-        <AppIcon name="alert" :size="18" class="mt-0.5" />
-        {{ error }}
-      </div>
-
-      <!-- التفاصيل -->
-      <template v-if="mode === 'details'">
-        <dl class="grid grid-cols-2 gap-3">
-          <div class="col-span-2 flex items-center gap-3 rounded-2xl bg-surface-muted p-3">
-            <span class="grid size-11 place-items-center rounded-xl bg-ink-950 text-gold-300">
-              <AppIcon name="scissors" />
-            </span>
-            <div class="min-w-0">
-              <dt class="sr-only">الخدمة</dt>
-              <dd class="font-bold">{{ b.serviceName }}</dd>
-              <dd class="text-sm text-fg-muted">{{ formatDuration(b.durationMinutes) }}</dd>
-            </div>
-          </div>
-          <div class="rounded-2xl border border-line p-3">
-            <dt class="text-xs font-semibold text-fg-muted">السعر المتفق عليه</dt>
-            <dd class="mt-0.5 font-bold tabular-nums">{{ formatMoney(b.price) }}</dd>
-          </div>
-          <div class="rounded-2xl border border-line p-3">
-            <dt class="text-xs font-semibold text-fg-muted">المدفوع</dt>
-            <dd
-              :class="
-                cn(
-                  'mt-0.5 font-bold tabular-nums',
-                  b.paidAmount != null ? 'text-success' : 'text-fg-subtle',
-                )
-              "
-            >
-              {{ b.paidAmount != null ? formatMoney(b.paidAmount) : '—' }}
-            </dd>
-          </div>
-          <div
-            v-if="b.customer.phone"
-            class="col-span-2 flex items-center justify-between gap-2 rounded-2xl border border-line p-3"
-          >
-            <div>
-              <dt class="text-xs font-semibold text-fg-muted">الهاتف</dt>
-              <dd class="font-bold tabular-nums" dir="ltr">{{ b.customer.phone }}</dd>
-            </div>
-            <div class="flex gap-2">
-              <AppButton
-                :href="`tel:${b.customer.phone}`"
-                variant="secondary"
-                size="icon"
-                icon="phone"
-                aria-label="اتصال"
-              />
-              <AppButton
-                v-if="whatsapp && b.status === 'ACTIVE'"
-                :href="whatsapp"
-                target="_blank"
-                rel="noopener"
-                variant="secondary"
-                size="icon"
-                icon="message"
-                aria-label="إرسال تذكير عبر واتساب"
-                class="text-green-700"
-              />
-            </div>
-          </div>
-          <div v-if="b.notes" class="col-span-2 rounded-2xl bg-gold-50 p-3">
-            <dt class="text-xs font-semibold text-gold-800">ملاحظات</dt>
-            <dd class="mt-0.5 text-[15px] whitespace-pre-line">{{ b.notes }}</dd>
-          </div>
-          <div v-if="b.cancelReason" class="col-span-2 rounded-2xl bg-danger-soft p-3">
-            <dt class="text-xs font-semibold text-red-800">سبب الإلغاء</dt>
-            <dd class="mt-0.5">{{ b.cancelReason }}</dd>
-          </div>
-        </dl>
-        <p class="text-xs text-fg-subtle">
-          سجّله {{ b.createdBy?.name ?? '—' }} ·
-          <NuxtLink
-            :to="`/customers/${b.customer.id}`"
-            class="font-semibold text-brand-ink underline-offset-2 hover:underline"
-          >
-            ملف الزبون
-          </NuxtLink>
-        </p>
-      </template>
-
-      <!-- إكمال وتسجيل الدفع -->
-      <form
-        v-else-if="mode === 'complete' || mode === 'editPaid'"
-        class="flex flex-col gap-3"
-        @submit.prevent="mode === 'complete' ? submitComplete() : submitPaid()"
-      >
-        <label for="paid-amount" class="font-bold">المبلغ الذي دفعه الزبون</label>
-        <AppMoneyInput
-          id="paid-amount"
-          v-model="paid"
-          data-autofocus
-          aria-describedby="paid-hint"
-        />
-        <p id="paid-hint" class="text-sm text-fg-muted">
-          السعر الافتراضي للخدمة:
-          <strong class="text-fg tabular-nums">{{ formatMoney(b.price) }}</strong> — عدّله إن دفع
-          الزبون مبلغاً مختلفاً.
-        </p>
-        <div class="flex flex-wrap gap-2">
-          <button
-            type="button"
-            class="h-9 rounded-full border border-line-strong px-3 text-sm font-semibold tabular-nums hover:border-gold-500"
-            @click="paid = b.price"
-          >
-            {{ formatMoney(b.price) }}
-          </button>
-        </div>
-      </form>
-
-      <!-- إلغاء -->
-      <div v-else-if="mode === 'cancel'" class="flex flex-col gap-3">
-        <p class="text-[15px] text-fg-muted">سيصبح وقت هذا الحجز متاحاً لحجز آخر فوراً.</p>
-        <label for="cancel-reason" class="font-bold"
-          >سبب الإلغاء <span class="text-sm font-normal text-fg-muted">(اختياري)</span></label
+      <ExpandTransition>
+        <div
+          v-if="error"
+          role="alert"
+          class="flex items-start gap-2 rounded-xl bg-danger-soft p-3 text-sm font-semibold text-red-800"
         >
-        <div class="flex flex-wrap gap-2">
-          <button
-            v-for="r in CANCEL_REASONS"
-            :key="r"
-            type="button"
-            :aria-pressed="reason === r"
-            :class="
-              cn(
-                'h-9 rounded-full border px-3 text-sm font-semibold transition-colors',
-                reason === r
-                  ? 'border-ink-950 bg-ink-950 text-white'
-                  : 'border-line-strong hover:border-gold-500',
-              )
-            "
-            @click="reason = reason === r ? '' : r"
-          >
-            {{ r }}
-          </button>
+          <AppIcon name="alert" :size="18" class="mt-0.5" />
+          {{ error }}
         </div>
-        <AppTextarea
-          id="cancel-reason"
-          v-model="reason"
-          rows="2"
-          maxlength="200"
-          placeholder="أو اكتب سبباً آخر…"
-        />
-      </div>
+      </ExpandTransition>
+
+      <!-- أوضاع: details / pay / cancel — كلٌّ بجذر واحد ومفتاح (بلا تعليقات بين الفروع كي يبقى Transition سليماً) -->
+      <AutoHeight>
+        <Transition name="fade" mode="out-in">
+          <div v-if="mode === 'details'" key="details" class="flex flex-col gap-4">
+            <dl class="grid grid-cols-2 gap-3">
+              <div class="col-span-2 flex items-center gap-3 rounded-2xl bg-surface-muted p-3">
+                <span class="grid size-11 place-items-center rounded-xl bg-ink-950 text-gold-300">
+                  <AppIcon name="scissors" />
+                </span>
+                <div class="min-w-0">
+                  <dt class="sr-only">الخدمة</dt>
+                  <dd class="font-bold">{{ b.serviceName }}</dd>
+                  <dd class="text-sm text-fg-muted">{{ formatDuration(b.durationMinutes) }}</dd>
+                </div>
+              </div>
+              <div class="rounded-2xl border border-line p-3">
+                <dt class="text-xs font-semibold text-fg-muted">السعر المتفق عليه</dt>
+                <dd class="mt-0.5 font-bold tabular-nums">{{ formatMoney(b.price) }}</dd>
+              </div>
+              <div class="rounded-2xl border border-line p-3">
+                <dt class="text-xs font-semibold text-fg-muted">المدفوع</dt>
+                <dd
+                  :class="
+                    cn(
+                      'mt-0.5 font-bold tabular-nums',
+                      b.paidAmount != null ? 'text-success' : 'text-fg-subtle',
+                    )
+                  "
+                >
+                  {{ b.paidAmount != null ? formatMoney(b.paidAmount) : '—' }}
+                </dd>
+              </div>
+              <div
+                v-if="b.customer.phone"
+                class="col-span-2 flex items-center justify-between gap-2 rounded-2xl border border-line p-3"
+              >
+                <div>
+                  <dt class="text-xs font-semibold text-fg-muted">الهاتف</dt>
+                  <dd class="font-bold tabular-nums" dir="ltr">{{ b.customer.phone }}</dd>
+                </div>
+                <div class="flex gap-2">
+                  <AppButton
+                    :href="`tel:${b.customer.phone}`"
+                    variant="secondary"
+                    size="icon"
+                    icon="phone"
+                    aria-label="اتصال"
+                  />
+                  <AppButton
+                    v-if="whatsapp && b.status === 'ACTIVE'"
+                    :href="whatsapp"
+                    target="_blank"
+                    rel="noopener"
+                    variant="secondary"
+                    size="icon"
+                    icon="message"
+                    aria-label="إرسال تذكير عبر واتساب"
+                    class="text-green-700"
+                  />
+                </div>
+              </div>
+              <div v-if="b.notes" class="col-span-2 rounded-2xl bg-gold-50 p-3">
+                <dt class="text-xs font-semibold text-gold-800">ملاحظات</dt>
+                <dd class="mt-0.5 text-[15px] whitespace-pre-line">{{ b.notes }}</dd>
+              </div>
+              <div v-if="b.cancelReason" class="col-span-2 rounded-2xl bg-danger-soft p-3">
+                <dt class="text-xs font-semibold text-red-800">سبب الإلغاء</dt>
+                <dd class="mt-0.5">{{ b.cancelReason }}</dd>
+              </div>
+            </dl>
+            <p class="text-xs text-fg-subtle">
+              سجّله {{ b.createdBy?.name ?? '—' }} ·
+              <NuxtLink
+                :to="`/customers/${b.customer.id}`"
+                class="font-semibold text-brand-ink underline-offset-2 hover:underline"
+              >
+                ملف الزبون
+              </NuxtLink>
+            </p>
+          </div>
+
+          <form
+            v-else-if="mode === 'complete' || mode === 'editPaid'"
+            key="pay"
+            class="flex flex-col gap-3"
+            @submit.prevent="mode === 'complete' ? submitComplete() : submitPaid()"
+          >
+            <label for="paid-amount" class="font-bold">المبلغ الذي دفعه الزبون</label>
+            <AppMoneyInput
+              id="paid-amount"
+              v-model="paid"
+              data-autofocus
+              aria-describedby="paid-hint"
+            />
+            <p id="paid-hint" class="text-sm text-fg-muted">
+              السعر الافتراضي للخدمة:
+              <strong class="text-fg tabular-nums">{{ formatMoney(b.price) }}</strong> — عدّله إن
+              دفع الزبون مبلغاً مختلفاً.
+            </p>
+            <div class="flex flex-wrap gap-2">
+              <button
+                type="button"
+                class="h-9 rounded-full border border-line-strong px-3 text-sm font-semibold tabular-nums hover:border-gold-500"
+                @click="paid = b.price"
+              >
+                {{ formatMoney(b.price) }}
+              </button>
+            </div>
+          </form>
+
+          <div v-else-if="mode === 'cancel'" key="cancel" class="flex flex-col gap-3">
+            <p class="text-[15px] text-fg-muted">سيصبح وقت هذا الحجز متاحاً لحجز آخر فوراً.</p>
+            <label for="cancel-reason" class="font-bold"
+              >سبب الإلغاء <span class="text-sm font-normal text-fg-muted">(اختياري)</span></label
+            >
+            <div class="flex flex-wrap gap-2">
+              <button
+                v-for="r in CANCEL_REASONS"
+                :key="r"
+                type="button"
+                :aria-pressed="reason === r"
+                :class="
+                  cn(
+                    'h-9 rounded-full border px-3 text-sm font-semibold transition-colors',
+                    reason === r
+                      ? 'border-ink-950 bg-ink-950 text-white'
+                      : 'border-line-strong hover:border-gold-500',
+                  )
+                "
+                @click="reason = reason === r ? '' : r"
+              >
+                {{ r }}
+              </button>
+            </div>
+            <AppTextarea
+              id="cancel-reason"
+              v-model="reason"
+              rows="2"
+              maxlength="200"
+              placeholder="أو اكتب سبباً آخر…"
+            />
+          </div>
+        </Transition>
+      </AutoHeight>
     </div>
 
     <template v-if="b" #footer>

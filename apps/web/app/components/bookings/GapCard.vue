@@ -5,7 +5,10 @@ const props = defineProps<{ gap: Gap; timezone: string; minDuration: number; can
 defineEmits<{ create: [startAt: string] }>()
 
 const tooShort = computed(() => props.gap.minutes < props.minDuration)
-const bookable = computed(() => props.canCreate && !props.gap.past && !tooShort.value)
+// الشكل (past/open/short) يحدّده gapVariant نفسه الذي يبني مفتاح الانتقال في DayAgenda
+const bookable = computed(
+  () => gapVariant(props.gap, props.minDuration, props.canCreate) === 'open',
+)
 const label = computed(() => formatTimeRange(props.gap.start, props.gap.end, props.timezone))
 </script>
 

@@ -18,6 +18,7 @@ const props = withDefaults(
 const model = defineModel<string | number | null | undefined>()
 const attrs = useAttrs()
 const input = ref<HTMLInputElement>()
+// ملاحظة: انتقال اللون/الحدود/ظل حلقة التركيز يأتي من القاعدة العامة في main.css (لا transition-* هنا)
 
 const inputAttrs = computed(() => {
   const { class: _class, ...rest } = attrs
@@ -44,7 +45,7 @@ defineExpose({ focus: () => input.value?.focus() })
       v-bind="inputAttrs"
       :class="
         cn(
-          'h-12 w-full rounded-xl border bg-surface px-3.5 text-base text-fg transition-colors',
+          'h-12 w-full rounded-xl border bg-surface px-3.5 text-base text-fg',
           'placeholder:text-fg-subtle',
           'focus:border-gold-500 focus:ring-2 focus:ring-gold-200 focus:outline-none',
           'disabled:cursor-not-allowed disabled:bg-surface-muted disabled:text-fg-muted',

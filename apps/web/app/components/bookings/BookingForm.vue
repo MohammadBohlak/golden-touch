@@ -43,7 +43,7 @@ const date = ref(
       : (props.initialDate ?? today.value),
 )
 
-const { handleSubmit, isSubmitting, setErrors } = useForm({
+const { handleSubmit, isSubmitting, setErrors, errors } = useForm({
   validationSchema: object({
     serviceId: string().required('اختر الخدمة'),
     startAt: string().nullable().required('اختر وقت الموعد'),
@@ -94,6 +94,7 @@ const { value: customPrice } = useField<number | null>('price')
 const selectedCustomer = ref<CustomerRef | null>(b?.customer ?? props.initialCustomer ?? null)
 
 const service = computed(() => (serviceId.value ? servicesStore.byId(serviceId.value) : undefined))
+const isQuickDate = computed(() => quickDays.value.some((d) => d.value === date.value))
 const duration = computed(() => customDuration.value || service.value?.durationMinutes || null)
 const price = computed(() => customPrice.value ?? service.value?.price ?? 0)
 
@@ -130,11 +131,23 @@ const showStartError = computed(
   () => Boolean(startError.value) && (startMeta.touched || startMeta.validated),
 )
 
+// قسم الخيارات الإضافية: مفتوح ابتداءً إن كانت فيه قيم مخصصة، ويُفتح تلقائياً عند ظهور خطأ في أحد حقوله
+const extrasOpen = ref(customDuration.value != null || customPrice.value != null)
+watch([customDuration, customPrice], ([d, p]) => {
+  if (d != null || p != null) extrasOpen.value = true
+})
+function revealExtrasOnError() {
+  if (errors.value.durationMinutes || errors.value.price || errors.value.notes)
+    extrasOpen.value = true
+}
+
 function scrollToFirstError() {
+  revealExtrasOnError()
   nextTick(() =>
-    document
-      .querySelector('[aria-invalid="true"], [data-error]')
-      ?.scrollIntoView({ behavior: 'smooth', block: 'center' }),
+    document.querySelector('[aria-invalid="true"], [data-error]')?.scrollIntoView({
+      behavior: prefersReducedMotion() ? 'auto' : 'smooth',
+      block: 'center',
+    }),
   )
 }
 
@@ -170,15 +183,17 @@ const onSubmit = handleSubmit(async (values) => {
 
 <template>
   <form class="flex flex-col gap-6" novalidate @submit="onSubmit">
-    <div
-      v-if="formError"
-      role="alert"
-      data-error
-      class="flex items-start gap-2 rounded-2xl bg-danger-soft p-3 text-sm font-semibold text-red-800"
-    >
-      <AppIcon name="alert" :size="18" class="mt-0.5" />
-      {{ formError }}
-    </div>
+    <ExpandTransition>
+      <div
+        v-if="formError"
+        role="alert"
+        data-error
+        class="flex items-start gap-2 rounded-2xl bg-danger-soft p-3 text-sm font-semibold text-red-800"
+      >
+        <AppIcon name="alert" :size="18" class="mt-0.5" />
+        {{ formError }}
+      </div>
+    </ExpandTransition>
 
     <!-- ١ الخدمة -->
     <section aria-labelledby="step-service" class="flex flex-col gap-3">
@@ -188,33 +203,39 @@ const onSubmit = handleSubmit(async (values) => {
         >
         الخدمة
       </h2>
-      <LoadingState v-if="!servicesStore.loaded" variant="cards" :rows="4" />
-      <EmptyState
-        v-else-if="!services.length"
-        icon="scissors"
-        title="لا توجد خدمات فعّالة"
-        description="أضف خدمات الحلاقة وأسعارها أولاً."
-      >
-        <AppButton v-if="isAdmin" to="/services" variant="secondary" size="sm"
-          >إدارة الخدمات</AppButton
+      <FadeTransition>
+        <LoadingState v-if="!servicesStore.loaded" key="loading" variant="cards" :rows="4" />
+        <EmptyState
+          v-else-if="!services.length"
+          key="empty"
+          icon="scissors"
+          title="لا توجد خدمات فعّالة"
+          description="أضف خدمات الحلاقة وأسعارها أولاً."
         >
-      </EmptyState>
-      <ServicePicker
-        v-else
-        v-model="serviceId"
-        :services="services"
-        :invalid="showServiceError"
-        described-by="service-error"
-      />
-      <p
-        v-if="showServiceError"
-        id="service-error"
-        role="alert"
-        data-error
-        class="text-sm font-medium text-danger"
-      >
-        {{ serviceError }}
-      </p>
+          <AppButton v-if="isAdmin" to="/services" variant="secondary" size="sm"
+            >إدارة الخدمات</AppButton
+          >
+        </EmptyState>
+        <ServicePicker
+          v-else
+          key="picker"
+          v-model="serviceId"
+          :services="services"
+          :invalid="showServiceError"
+          described-by="service-error"
+        />
+      </FadeTransition>
+      <ExpandTransition>
+        <p
+          v-if="showServiceError"
+          id="service-error"
+          role="alert"
+          data-error
+          class="text-sm font-medium text-danger"
+        >
+          {{ serviceError }}
+        </p>
+      </ExpandTransition>
     </section>
 
     <!-- ٢ اليوم والوقت -->
@@ -250,9 +271,9 @@ const onSubmit = handleSubmit(async (values) => {
           :class="
             cn(
               'relative flex h-14 min-w-32 shrink-0 cursor-pointer flex-col items-center justify-center rounded-2xl border px-3',
-              !quickDays.some((d) => d.value === date)
-                ? 'border-ink-950 bg-ink-950 text-white'
-                : 'border-line-strong bg-surface',
+              isQuickDate
+                ? 'border-line-strong bg-surface'
+                : 'border-ink-950 bg-ink-950 text-white',
             )
           "
         >
@@ -260,9 +281,9 @@ const onSubmit = handleSubmit(async (values) => {
             <AppIcon name="calendar" :size="16" />
             تاريخ آخر
           </span>
-          <span v-if="!quickDays.some((d) => d.value === date)" class="text-xs text-gold-300">
-            {{ formatDateShort(date) }}
-          </span>
+          <Collapse :open="!isQuickDate">
+            <span class="block text-xs text-gold-300">{{ formatDateShort(date) }}</span>
+          </Collapse>
           <input
             v-model="date"
             type="date"
@@ -272,7 +293,13 @@ const onSubmit = handleSubmit(async (values) => {
           />
         </label>
       </div>
-      <p class="text-sm font-semibold text-fg-muted">{{ formatDateLong(date, true) }}</p>
+      <AutoHeight bleed="">
+        <Transition name="fade" mode="out-in">
+          <p :key="date" class="text-sm font-semibold text-fg-muted">
+            {{ formatDateLong(date, true) }}
+          </p>
+        </Transition>
+      </AutoHeight>
 
       <SlotPicker
         ref="slotPicker"
@@ -284,9 +311,11 @@ const onSubmit = handleSubmit(async (values) => {
         :invalid="showStartError"
         @next-day="date = addDays(date, 1)"
       />
-      <p v-if="showStartError" role="alert" data-error class="text-sm font-medium text-danger">
-        {{ startError }}
-      </p>
+      <ExpandTransition>
+        <p v-if="showStartError" role="alert" data-error class="text-sm font-medium text-danger">
+          {{ startError }}
+        </p>
+      </ExpandTransition>
     </section>
 
     <!-- ٣ الزبون -->
@@ -301,22 +330,12 @@ const onSubmit = handleSubmit(async (values) => {
     </section>
 
     <!-- تفاصيل اختيارية -->
-    <details
-      class="group rounded-2xl border border-line bg-surface"
-      :open="customDuration != null || customPrice != null || undefined"
-    >
-      <summary class="flex h-13 list-none items-center justify-between px-4 font-bold">
-        <span class="flex items-center gap-2">
-          <AppIcon name="note" :size="18" />
-          ملاحظات وسعر أو مدة مخصصة
-        </span>
-        <AppIcon
-          name="chevron-down"
-          :size="18"
-          class="transition-transform group-open:rotate-180"
-        />
-      </summary>
-      <div class="flex flex-col gap-4 px-4 pb-4">
+    <Disclosure v-model:open="extrasOpen">
+      <template #summary>
+        <AppIcon name="note" :size="18" />
+        <span class="font-bold">ملاحظات وسعر أو مدة مخصصة</span>
+      </template>
+      <div class="flex flex-col gap-4 pt-1">
         <div class="grid grid-cols-2 gap-3">
           <FormField
             v-slot="{ field, id, invalid, describedBy }"
@@ -370,17 +389,21 @@ const onSubmit = handleSubmit(async (values) => {
           />
         </FormField>
       </div>
-    </details>
+    </Disclosure>
 
     <!-- شريط الملخص والتثبيت -->
     <div
       class="sticky bottom-[calc(4.75rem+env(safe-area-inset-bottom))] z-20 -mx-1 flex items-center gap-3 rounded-2xl bg-ink-950 p-3 text-white shadow-float lg:bottom-4"
     >
       <div class="min-w-0 flex-1">
-        <p class="truncate text-sm font-semibold text-ink-200">
-          {{ summary || 'اختر الخدمة والوقت' }}
+        <Transition name="fade" mode="out-in">
+          <p :key="summary" class="truncate text-sm font-semibold text-ink-200">
+            {{ summary || 'اختر الخدمة والوقت' }}
+          </p>
+        </Transition>
+        <p class="text-lg font-extrabold text-gold-300 tabular-nums">
+          <AnimatedNumber :value="price" :format="formatMoney" />
         </p>
-        <p class="text-lg font-extrabold text-gold-300 tabular-nums">{{ formatMoney(price) }}</p>
       </div>
       <AppButton type="submit" variant="gold" size="lg" icon="check" :loading="isSubmitting">
         {{ isEdit ? 'حفظ التعديل' : 'تثبيت الحجز' }}

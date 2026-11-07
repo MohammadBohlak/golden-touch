@@ -40,13 +40,16 @@ function onSaved(booking: Booking) {
 <template>
   <div>
     <PageHeader title="حجز جديد" subtitle="حجز فوري أو مجدول لأي يوم قادم" back="/" />
-    <LoadingState v-if="!ready" variant="spinner" />
-    <BookingForm
-      v-else
-      :initial-start="initialStart"
-      :initial-date="initialDate"
-      :initial-customer="customer"
-      @saved="onSaved"
-    />
+    <Transition name="fade" mode="out-in">
+      <LoadingState v-if="!ready" key="loading" variant="spinner" />
+      <BookingForm
+        v-else
+        key="form"
+        :initial-start="initialStart"
+        :initial-date="initialDate"
+        :initial-customer="customer"
+        @saved="onSaved"
+      />
+    </Transition>
   </div>
 </template>

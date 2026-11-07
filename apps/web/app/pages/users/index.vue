@@ -13,7 +13,7 @@ const { timezone, today } = useShopTime()
 const search = ref(usersStore.search)
 const debounced = useDebounced(search)
 
-const { loading, errorMessage, execute, refresh } = useApiState((signal) =>
+const { loading, refreshing, errorMessage, execute, refresh } = useApiState((signal) =>
   usersStore.fetch(signal),
 )
 
@@ -29,6 +29,7 @@ watch(
 onMounted(() => execute())
 
 // حالة الحوار محلية في الصفحة (وليست في الـ store)
+const switching = computed(() => loading.value && !refreshing.value)
 const dialogOpen = ref(false)
 const editing = ref<User | null>(null)
 function openCreate() {
@@ -88,109 +89,64 @@ function lastLogin(value: string | null) {
 
     <SearchInput v-model="search" placeholder="ابحث بالاسم أو البريد أو الهاتف" />
 
-    <LoadingState v-if="loading && !usersStore.items.length" :rows="3" />
-    <ErrorState v-else-if="errorMessage" :message="errorMessage" @retry="refresh" />
-    <EmptyState
-      v-else-if="!usersStore.items.length"
-      icon="users"
-      title="لا يوجد مستخدمون مطابقون"
-    />
+    <FadeTransition>
+      <LoadingState v-if="loading && !usersStore.items.length" key="loading" :rows="3" />
+      <ErrorState v-else-if="errorMessage" key="error" :message="errorMessage" @retry="refresh" />
+      <EmptyState
+        v-else-if="!usersStore.items.length"
+        key="empty"
+        icon="users"
+        title="لا يوجد مستخدمون مطابقون"
+      />
 
-    <DataTable
-      v-else
-      :columns="columns"
-      :rows="rows"
-      row-key="id"
-      caption="المستخدمون"
-      :class="loading && 'opacity-60'"
-    >
-      <template #cell-name="{ row }">
-        <div class="flex items-center gap-3">
-          <span
-            class="grid size-10 shrink-0 place-items-center rounded-full bg-ink-950 font-bold text-gold-300"
-          >
-            {{ initials(asUser(row).name) }}
-          </span>
-          <div class="min-w-0">
-            <p class="truncate font-bold">
-              {{ asUser(row).name }}
-              <span v-if="asUser(row).id === me?.id" class="text-xs font-semibold text-fg-muted"
-                >(أنت)</span
-              >
-            </p>
-            <p class="truncate text-sm text-fg-muted" dir="ltr">{{ asUser(row).email }}</p>
-          </div>
-        </div>
-      </template>
-      <template #cell-role="{ row }">
-        <AppBadge
-          :tone="asUser(row).role.name === 'admin' ? 'dark' : 'neutral'"
-          :icon="asUser(row).role.name === 'admin' ? 'crown' : 'user'"
-        >
-          {{ asUser(row).role.label }}
-        </AppBadge>
-      </template>
-      <template #cell-status="{ row }">
-        <AppBadge :tone="asUser(row).isActive ? 'success' : 'danger'">
-          {{ asUser(row).isActive ? 'مفعّل' : 'موقوف' }}
-        </AppBadge>
-      </template>
-      <template #cell-lastLoginAt="{ row }">
-        <span class="text-sm text-fg-muted">{{ lastLogin(asUser(row).lastLoginAt) }}</span>
-      </template>
-      <template #cell-actions="{ row }">
-        <div class="flex justify-end gap-1">
-          <AppButton
-            v-if="can('users.update')"
-            variant="ghost"
-            size="icon-sm"
-            icon="pencil"
-            :aria-label="`تعديل ${asUser(row).name}`"
-            @click="openEdit(asUser(row))"
-          />
-          <AppButton
-            v-if="can('users.delete') && asUser(row).id !== me?.id"
-            variant="ghost"
-            size="icon-sm"
-            icon="trash"
-            class="text-danger"
-            :aria-label="`حذف ${asUser(row).name}`"
-            @click="remove(asUser(row))"
-          />
-        </div>
-      </template>
-
-      <template #mobile="{ row }">
-        <div class="flex items-start gap-3">
-          <span
-            class="grid size-11 shrink-0 place-items-center rounded-full bg-ink-950 font-bold text-gold-300"
-          >
-            {{ initials(asUser(row).name) }}
-          </span>
-          <div class="min-w-0 flex-1">
-            <p class="truncate font-bold">
-              {{ asUser(row).name }}
-              <span v-if="asUser(row).id === me?.id" class="text-xs font-semibold text-fg-muted"
-                >(أنت)</span
-              >
-            </p>
-            <p class="truncate text-sm text-fg-muted" dir="ltr">{{ asUser(row).email }}</p>
-            <div class="mt-2 flex flex-wrap gap-1.5">
-              <AppBadge :tone="asUser(row).role.name === 'admin' ? 'dark' : 'neutral'">{{
-                asUser(row).role.label
-              }}</AppBadge>
-              <AppBadge :tone="asUser(row).isActive ? 'success' : 'danger'">{{
-                asUser(row).isActive ? 'مفعّل' : 'موقوف'
-              }}</AppBadge>
+      <DataTable
+        v-else
+        key="table"
+        :columns="columns"
+        :rows="rows"
+        row-key="id"
+        caption="المستخدمون"
+        :class="cn('transition-opacity', switching && 'opacity-60')"
+      >
+        <template #cell-name="{ row }">
+          <div class="flex items-center gap-3">
+            <span
+              class="grid size-10 shrink-0 place-items-center rounded-full bg-ink-950 font-bold text-gold-300"
+            >
+              {{ initials(asUser(row).name) }}
+            </span>
+            <div class="min-w-0">
+              <p class="truncate font-bold">
+                {{ asUser(row).name }}
+                <span v-if="asUser(row).id === me?.id" class="text-xs font-semibold text-fg-muted"
+                  >(أنت)</span
+                >
+              </p>
+              <p class="truncate text-sm text-fg-muted" dir="ltr">{{ asUser(row).email }}</p>
             </div>
-            <p class="mt-1.5 text-xs text-fg-subtle">
-              آخر دخول: {{ lastLogin(asUser(row).lastLoginAt) }}
-            </p>
           </div>
-          <div class="flex flex-col gap-1">
+        </template>
+        <template #cell-role="{ row }">
+          <AppBadge
+            :tone="asUser(row).role.name === 'admin' ? 'dark' : 'neutral'"
+            :icon="asUser(row).role.name === 'admin' ? 'crown' : 'user'"
+          >
+            {{ asUser(row).role.label }}
+          </AppBadge>
+        </template>
+        <template #cell-status="{ row }">
+          <AppBadge :tone="asUser(row).isActive ? 'success' : 'danger'">
+            {{ asUser(row).isActive ? 'مفعّل' : 'موقوف' }}
+          </AppBadge>
+        </template>
+        <template #cell-lastLoginAt="{ row }">
+          <span class="text-sm text-fg-muted">{{ lastLogin(asUser(row).lastLoginAt) }}</span>
+        </template>
+        <template #cell-actions="{ row }">
+          <div class="flex justify-end gap-1">
             <AppButton
               v-if="can('users.update')"
-              variant="secondary"
+              variant="ghost"
               size="icon-sm"
               icon="pencil"
               :aria-label="`تعديل ${asUser(row).name}`"
@@ -198,16 +154,65 @@ function lastLogin(value: string | null) {
             />
             <AppButton
               v-if="can('users.delete') && asUser(row).id !== me?.id"
-              variant="danger-soft"
+              variant="ghost"
               size="icon-sm"
               icon="trash"
+              class="text-danger"
               :aria-label="`حذف ${asUser(row).name}`"
               @click="remove(asUser(row))"
             />
           </div>
-        </div>
-      </template>
-    </DataTable>
+        </template>
+
+        <template #mobile="{ row }">
+          <div class="flex items-start gap-3">
+            <span
+              class="grid size-11 shrink-0 place-items-center rounded-full bg-ink-950 font-bold text-gold-300"
+            >
+              {{ initials(asUser(row).name) }}
+            </span>
+            <div class="min-w-0 flex-1">
+              <p class="truncate font-bold">
+                {{ asUser(row).name }}
+                <span v-if="asUser(row).id === me?.id" class="text-xs font-semibold text-fg-muted"
+                  >(أنت)</span
+                >
+              </p>
+              <p class="truncate text-sm text-fg-muted" dir="ltr">{{ asUser(row).email }}</p>
+              <div class="mt-2 flex flex-wrap gap-1.5">
+                <AppBadge :tone="asUser(row).role.name === 'admin' ? 'dark' : 'neutral'">{{
+                  asUser(row).role.label
+                }}</AppBadge>
+                <AppBadge :tone="asUser(row).isActive ? 'success' : 'danger'">{{
+                  asUser(row).isActive ? 'مفعّل' : 'موقوف'
+                }}</AppBadge>
+              </div>
+              <p class="mt-1.5 text-xs text-fg-subtle">
+                آخر دخول: {{ lastLogin(asUser(row).lastLoginAt) }}
+              </p>
+            </div>
+            <div class="flex flex-col gap-1">
+              <AppButton
+                v-if="can('users.update')"
+                variant="secondary"
+                size="icon-sm"
+                icon="pencil"
+                :aria-label="`تعديل ${asUser(row).name}`"
+                @click="openEdit(asUser(row))"
+              />
+              <AppButton
+                v-if="can('users.delete') && asUser(row).id !== me?.id"
+                variant="danger-soft"
+                size="icon-sm"
+                icon="trash"
+                :aria-label="`حذف ${asUser(row).name}`"
+                @click="remove(asUser(row))"
+              />
+            </div>
+          </div>
+        </template>
+      </DataTable>
+    </FadeTransition>
 
     <AppPagination
       v-model="usersStore.page"

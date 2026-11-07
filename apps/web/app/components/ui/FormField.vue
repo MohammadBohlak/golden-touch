@@ -29,7 +29,6 @@ const id = computed(() => `field-${props.name}-${uid}`)
 const errorId = computed(() => `${id.value}-error`)
 const hintId = computed(() => `${id.value}-hint`)
 const showError = computed(() => Boolean(errorMessage.value) && (meta.touched || meta.validated))
-
 const field = computed(() => ({
   modelValue: value.value,
   // بعد أول لمس نتحقق مع كل تعديل، قبله ننتظر الخروج من الحقل
@@ -55,15 +54,19 @@ const describedBy = computed(
       <span v-if="required" class="text-danger" aria-hidden="true">*</span>
     </label>
     <slot v-bind="{ field, id, invalid: showError, describedBy, value }" />
-    <p
-      v-if="showError"
-      :id="errorId"
-      role="alert"
-      class="flex items-center gap-1 text-sm font-medium text-danger"
-    >
-      <AppIcon name="alert" :size="14" />
-      {{ errorMessage }}
-    </p>
-    <p v-else-if="hint" :id="hintId" class="text-sm text-fg-muted">{{ hint }}</p>
+    <ExpandTransition>
+      <p
+        v-if="showError"
+        :id="errorId"
+        role="alert"
+        class="flex items-center gap-1 text-sm font-medium text-danger"
+      >
+        <AppIcon name="alert" :size="14" />
+        {{ errorMessage }}
+      </p>
+    </ExpandTransition>
+    <ExpandTransition>
+      <p v-if="hint && !showError" :id="hintId" class="text-sm text-fg-muted">{{ hint }}</p>
+    </ExpandTransition>
   </div>
 </template>

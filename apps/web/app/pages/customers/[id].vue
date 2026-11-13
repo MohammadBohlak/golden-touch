@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { Booking, CustomerDetails } from '~/types/api'
+import type { Booking, CustomerDetails, RecurringSeries } from '~/types/api'
 
 definePageMeta({ title: 'ملف الزبون', permission: 'customers.read' })
 
@@ -15,6 +15,14 @@ const { data, loading, errorMessage, execute, refresh } = useApiState((signal) =
   $api<CustomerDetails>(`/customers/${id}`, { signal }),
 )
 onMounted(() => execute())
+
+// الحجوزات الدورية لهذا الزبون (لا تُعرض إلا إن وُجدت)
+const recurring = useApiState((signal) =>
+  $api<RecurringSeries[]>('/recurring-bookings', { query: { customerId: id }, signal }),
+)
+onMounted(() => {
+  if (can('recurring.read')) void recurring.execute()
+})
 
 const editOpen = ref(false)
 const sheetOpen = ref(false)
@@ -84,6 +92,14 @@ async function remove() {
             icon="calendar-plus"
           >
             حجز جديد له
+          </AppButton>
+          <AppButton
+            v-if="can('recurring.manage')"
+            :to="{ path: '/recurring/new', query: { customerId: data.id } }"
+            variant="secondary"
+            icon="repeat"
+          >
+            حجز دوري له
           </AppButton>
           <AppButton v-if="data.phone" :href="`tel:${data.phone}`" variant="secondary" icon="phone"
             >اتصال</AppButton
@@ -162,6 +178,29 @@ async function remove() {
             </div>
           </ExpandTransition>
         </div>
+
+        <ExpandTransition>
+          <section
+            v-if="recurring.data.value?.length"
+            aria-labelledby="recurring-title"
+            class="flex flex-col gap-2.5"
+          >
+            <h2 id="recurring-title" class="flex items-center gap-2 font-bold">
+              <AppIcon name="repeat" :size="18" />
+              الحجوزات الدورية
+            </h2>
+            <ul class="grid gap-2.5 md:grid-cols-2">
+              <li v-for="series in recurring.data.value" :key="series.id">
+                <RecurringCard
+                  :series="series"
+                  :timezone="timezone"
+                  :today="today"
+                  :to="`/recurring/${series.id}`"
+                />
+              </li>
+            </ul>
+          </section>
+        </ExpandTransition>
 
         <section aria-labelledby="history" class="flex flex-col gap-2.5">
           <h2 id="history" class="flex items-center gap-2 font-bold">

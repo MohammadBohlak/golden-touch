@@ -164,6 +164,9 @@ export class CustomersService {
     if (bookings > 0) {
       throw new ConflictException('لا يمكن حذف زبون لديه حجوزات مسجّلة')
     }
+    if (await this.prisma.recurringBooking.count({ where: { customerId: id } })) {
+      throw new ConflictException('لا يمكن حذف زبون لديه حجز دوري مسجّل')
+    }
     await this.prisma.customer.delete({ where: { id } })
     return { success: true }
   }

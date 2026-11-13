@@ -5,6 +5,7 @@ import { AuthController } from '../modules/auth/auth.controller'
 import { BookingsController } from '../modules/bookings/bookings.controller'
 import { CustomersController } from '../modules/customers/customers.controller'
 import { HealthController } from '../modules/health/health.controller'
+import { RecurringController } from '../modules/recurring/recurring.controller'
 import { RolesController } from '../modules/roles/roles.controller'
 import { ServicesController } from '../modules/services/services.controller'
 import { SettingsController } from '../modules/settings/settings.controller'
@@ -27,6 +28,7 @@ const CONTROLLERS = [
   ServicesController,
   CustomersController,
   BookingsController,
+  RecurringController,
   StatsController,
 ]
 
@@ -99,6 +101,12 @@ describe('سطح الـ API للمشرف', () => {
         'POST /bookings/:id/complete',
         'POST /bookings/:id/cancel',
         'POST /bookings/:id/reopen',
+        'GET /recurring-bookings',
+        'GET /recurring-bookings/:id',
+        'POST /recurring-bookings/preview',
+        'POST /recurring-bookings',
+        'PATCH /recurring-bookings/:id',
+        'POST /recurring-bookings/:id/stop',
         'GET /customers',
         'GET /customers/:id',
         'POST /customers',

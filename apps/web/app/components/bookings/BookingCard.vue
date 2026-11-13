@@ -69,6 +69,7 @@ const amount = computed(() =>
         >
           {{ booking.customer.name }}
         </p>
+        <AppBadge v-if="booking.recurringId" tone="gold" icon="repeat">دوري</AppBadge>
         <Transition name="fade" mode="out-in">
           <span
             v-if="live"

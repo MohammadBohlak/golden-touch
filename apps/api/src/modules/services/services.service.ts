@@ -38,11 +38,15 @@ export class ServicesService {
     return toServiceView(updated, capsOf(actor).finance)
   }
 
-  /** الخدمة المرتبطة بحجوزات تُؤرشف (حذف ناعم) حتى يبقى سجل الحجوزات والإحصائيات سليماً */
+  /** الخدمة المرتبطة بحجوزات أو بحجز دوري تُؤرشف (حذف ناعم) حتى يبقى سجل الحجوزات والإحصائيات سليماً */
   async remove(id: string): Promise<{ archived: boolean }> {
     await this.getRaw(id)
-    const used = await this.prisma.booking.count({ where: { serviceId: id } })
-    if (used > 0) {
+    // حجوزات أو تناوب حجز دوري: الحذف الفعلي يكسر المفتاح الأجنبي ويفقد السجل → أرشفة
+    const [bookings, recurring] = await Promise.all([
+      this.prisma.booking.count({ where: { serviceId: id } }),
+      this.prisma.recurringBookingService.count({ where: { serviceId: id } }),
+    ])
+    if (bookings + recurring > 0) {
       await this.prisma.service.update({
         where: { id },
         data: { archivedAt: new Date(), isActive: false },

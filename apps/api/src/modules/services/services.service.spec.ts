@@ -61,3 +61,34 @@ describe('ServicesService — السعر لمن يملك finance.read فقط', (
     expect(await service.update('s1', { price: 1 } as never, STAFF)).not.toHaveProperty('price')
   })
 })
+
+describe('ServicesService.remove', () => {
+  const make = (bookings: number, recurring: number) => {
+    const { service, prisma } = setup()
+    const del = jest.fn().mockResolvedValue({})
+    Object.assign(prisma.service, { delete: del })
+    Object.assign(prisma, {
+      booking: { count: jest.fn().mockResolvedValue(bookings) },
+      recurringBookingService: { count: jest.fn().mockResolvedValue(recurring) },
+    })
+    return { service, update: prisma.service.update, del }
+  }
+
+  it('خدمة في تناوب حجز دوري بلا حجوزات ← تُؤرشف ولا تُحذف', async () => {
+    const { service, update, del } = make(0, 2)
+    await expect(service.remove('s1')).resolves.toEqual({ archived: true })
+    expect(update).toHaveBeenCalled()
+    expect(del).not.toHaveBeenCalled()
+  })
+
+  it('خدمة بحجوزات ← تُؤرشف', async () => {
+    const { service } = make(3, 0)
+    await expect(service.remove('s1')).resolves.toEqual({ archived: true })
+  })
+
+  it('خدمة غير مستعملة ← تُحذف', async () => {
+    const { service, del } = make(0, 0)
+    await expect(service.remove('s1')).resolves.toEqual({ archived: false })
+    expect(del).toHaveBeenCalled()
+  })
+})

@@ -1,4 +1,4 @@
-import { NotFoundException } from '@nestjs/common'
+import { ConflictException, NotFoundException } from '@nestjs/common'
 import { BookingStatus } from '@prisma/client'
 import type { AuthUser } from '../../common/types/auth-user'
 import type { PrismaService } from '../../prisma/prisma.service'
@@ -153,5 +153,29 @@ describe('CustomersService.findOne', () => {
     const { service, prisma } = setup()
     prisma.customer.findUnique.mockResolvedValue(null)
     await expect(service.findOne('x', STAFF)).rejects.toBeInstanceOf(NotFoundException)
+  })
+})
+
+describe('CustomersService.remove', () => {
+  const make = (bookings: number, recurring: number) => {
+    const { service, prisma } = setup()
+    const del = jest.fn().mockResolvedValue({})
+    Object.assign(prisma.customer, { delete: del })
+    prisma.booking.count.mockResolvedValue(bookings)
+    Object.assign(prisma, { recurringBooking: { count: jest.fn().mockResolvedValue(recurring) } })
+    return { service, del }
+  }
+
+  it('لزبون حجز دوري (ولو موقوف) ← 409 بدل خطأ المفتاح الأجنبي', async () => {
+    const { service, del } = make(0, 1)
+    await expect(service.remove('c1')).rejects.toBeInstanceOf(ConflictException)
+    await expect(service.remove('c1')).rejects.toThrow('حجز دوري')
+    expect(del).not.toHaveBeenCalled()
+  })
+
+  it('بلا حجوزات ولا سلاسل ← يُحذف', async () => {
+    const { service, del } = make(0, 0)
+    await expect(service.remove('c1')).resolves.toEqual({ success: true })
+    expect(del).toHaveBeenCalled()
   })
 })

@@ -16,6 +16,8 @@ const STAFF_MUST_HAVE = [
   'customers.create',
   'customers.read',
   'customers.update',
+  'recurring.manage', // الحجوزات الدورية — بلا مال ولا ماضٍ (docs/RECURRING_BOOKINGS_PLAN.md)
+  'recurring.read',
   'services.read',
   'settings.read',
 ]

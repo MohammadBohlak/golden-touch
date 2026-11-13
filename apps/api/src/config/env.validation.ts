@@ -21,4 +21,7 @@ export const envValidationSchema = Joi.object({
   // إبقاء الخادم مستيقظاً على الخطة المجانية: طلب دوري لـ /api/health عبر الرابط العام
   KEEP_ALIVE_URL: Joi.string().uri({ scheme: ['http', 'https'] }),
   KEEP_ALIVE_INTERVAL_MINUTES: Joi.number().integer().min(1).max(14).default(10),
+  // الحجوزات الدورية: أفق التوليد بالأيام، وفاصل المزامنة بالدقائق (0 = معطّلة)
+  RECURRING_HORIZON_DAYS: Joi.number().integer().min(14).max(180).default(56),
+  RECURRING_SYNC_MINUTES: Joi.number().integer().min(0).max(1440).default(360),
 })

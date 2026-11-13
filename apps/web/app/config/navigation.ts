@@ -55,6 +55,15 @@ export const NAVIGATION: NavItem[] = [
     placement: ['sidebar', 'more'],
   },
   {
+    key: 'recurring',
+    label: 'الحجوزات الدورية',
+    description: 'مواعيد الزبائن المتكررة',
+    icon: 'repeat',
+    to: '/recurring',
+    permission: 'recurring.read',
+    placement: ['sidebar', 'more'],
+  },
+  {
     key: 'services',
     label: 'الخدمات والأسعار',
     description: 'الخدمات ومدتها وسعرها',

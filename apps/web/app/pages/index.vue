@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { Booking, DaySchedule } from '~/types/api'
+import type { Booking, DaySchedule, RecurringSeries } from '~/types/api'
 
 definePageMeta({ title: 'الجدول', permission: 'bookings.read' })
 
@@ -29,6 +29,16 @@ const day = useApiState((signal, d: string) =>
   $api<DaySchedule>('/bookings/day', { query: { date: d }, signal }),
 )
 const overdue = useApiState((signal) => $api<Booking[]>('/bookings/overdue', { signal }))
+// مشكلات الحجوزات الدورية: عند الفتح وبعد أي تعديل فقط (لا ضمن التحديث الدوري كل دقيقة: الحساب أثقل)
+const recurring = useApiState((signal) =>
+  $api<RecurringSeries[]>('/recurring-bookings', { signal }),
+)
+const recurringIssues = computed(() =>
+  (recurring.data.value ?? []).reduce((total, series) => total + series.issues.length, 0),
+)
+function loadRecurring() {
+  if (can('recurring.read')) void recurring.execute()
+}
 
 function load() {
   void day.execute(date.value)
@@ -37,6 +47,7 @@ function load() {
 
 onMounted(() => {
   load()
+  loadRecurring()
   servicesStore.ensure().catch(() => {})
 })
 // اتجاه حركة تبدّل اليوم: الأحدث يدخل من جهة النهاية، والأقدم من جهة البداية
@@ -71,6 +82,7 @@ function openBooking(booking: Booking) {
 function onChanged() {
   invalidateApiCache('stats')
   load()
+  loadRecurring()
 }
 
 function createAt(startAt?: string) {
@@ -141,6 +153,8 @@ const unpriced = computed(() =>
     />
 
     <OverdueBanner :bookings="overdue.data.value ?? []" :timezone="timezone" @open="openBooking" />
+
+    <RecurringIssuesBanner :count="recurringIssues" />
 
     <!-- ملخص اليوم -->
     <ExpandTransition>

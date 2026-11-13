@@ -49,7 +49,8 @@ model User {
   createdAt    DateTime  @default(now()) @db.Timestamptz(3)
   updatedAt    DateTime  @updatedAt @db.Timestamptz(3)
 
-  bookingsCreated Booking[] @relation("BookingCreatedBy")
+  bookingsCreated  Booking[]          @relation("BookingCreatedBy")
+  recurringCreated RecurringBooking[] @relation("RecurringCreatedBy")
 
   @@index([roleId])
   @@map("users")
@@ -88,7 +89,8 @@ model Service {
   createdAt       DateTime  @default(now()) @db.Timestamptz(3)
   updatedAt       DateTime  @updatedAt @db.Timestamptz(3)
 
-  bookings Booking[]
+  bookings          Booking[]
+  recurringServices RecurringBookingService[]
 
   @@index([archivedAt, sortOrder])
   @@map("services")
@@ -102,7 +104,8 @@ model Customer {
   createdAt DateTime @default(now()) @db.Timestamptz(3)
   updatedAt DateTime @updatedAt @db.Timestamptz(3)
 
-  bookings Booking[]
+  bookings          Booking[]
+  recurringBookings RecurringBooking[]
 
   @@index([name])
   @@map("customers")
@@ -115,33 +118,85 @@ enum BookingStatus {
 }
 
 model Booking {
-  id              String        @id @default(uuid()) @db.Uuid
-  customerId      String        @db.Uuid
-  customer        Customer      @relation(fields: [customerId], references: [id], onDelete: Restrict)
-  serviceId       String        @db.Uuid
-  service         Service       @relation(fields: [serviceId], references: [id], onDelete: Restrict)
+  id              String            @id @default(uuid()) @db.Uuid
+  customerId      String            @db.Uuid
+  customer        Customer          @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  serviceId       String            @db.Uuid
+  service         Service           @relation(fields: [serviceId], references: [id], onDelete: Restrict)
   /// لقطة من الخدمة وقت الحجز — تغيير الخدمة لاحقاً لا يغيّر السجل
   serviceName     String
   /// السعر المتفق عليه (افتراضياً سعر الخدمة)
   price           Int
   durationMinutes Int
-  startAt         DateTime      @db.Timestamptz(3)
-  endAt           DateTime      @db.Timestamptz(3)
-  status          BookingStatus @default(ACTIVE)
+  startAt         DateTime          @db.Timestamptz(3)
+  endAt           DateTime          @db.Timestamptz(3)
+  status          BookingStatus     @default(ACTIVE)
   /// المبلغ المدفوع فعلياً عند الإكمال
   paidAmount      Int?
   notes           String?
   cancelReason    String?
-  completedAt     DateTime?     @db.Timestamptz(3)
-  cancelledAt     DateTime?     @db.Timestamptz(3)
-  createdById     String?       @db.Uuid
-  createdBy       User?         @relation("BookingCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
-  createdAt       DateTime      @default(now()) @db.Timestamptz(3)
-  updatedAt       DateTime      @updatedAt @db.Timestamptz(3)
+  completedAt     DateTime?         @db.Timestamptz(3)
+  cancelledAt     DateTime?         @db.Timestamptz(3)
+  createdById     String?           @db.Uuid
+  createdBy       User?             @relation("BookingCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  /// الحجز الدوري الذي ولّد هذا الموعد (null = حجز عادي)
+  recurringId     String?           @db.Uuid
+  recurring       RecurringBooking? @relation(fields: [recurringId], references: [id], onDelete: SetNull)
+  /// يوم الدوام المخطَّط للموعد (لا يتغيّر بنقل الموعد) — يمنع توليده مرتين
+  occurrenceDate  DateTime?         @db.Date
+  /// عُدّل هذا الموعد يدوياً فلا تعيد كتابته تعديلات السلسلة
+  recurringEdited Boolean           @default(false)
+  createdAt       DateTime          @default(now()) @db.Timestamptz(3)
+  updatedAt       DateTime          @updatedAt @db.Timestamptz(3)
 
+  @@unique([recurringId, occurrenceDate])
+  @@index([recurringId, startAt])
   @@index([startAt])
   @@index([status, startAt])
   @@index([customerId])
   @@index([serviceId])
   @@map("bookings")
+}
+
+// ───────────────────────── الحجوزات الدورية ─────────────────────────
+// docs/RECURRING_BOOKINGS_PLAN.md — السلسلة قالب، وتُولَّد منه حجوزات عادية مسبقاً (أفق متحرّك).
+
+model RecurringBooking {
+  id            String    @id @default(uuid()) @db.Uuid
+  customerId    String    @db.Uuid
+  customer      Customer  @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  /// HH:mm بتوقيت الصالون
+  startTime     String
+  /// أول موعد (يوم الدوام): يحدّد يوم الأسبوع وطور التكرار
+  startDate     DateTime  @db.Date
+  /// يتكرر كل N أسبوع (1–4)
+  intervalWeeks Int       @default(1)
+  /// آخر يوم شامل — null = مفتوح
+  endDate       DateTime? @db.Date
+  notes         String?
+  /// موقوفة: لا يُولَّد منها شيء بعد الآن
+  stoppedAt     DateTime? @db.Timestamptz(3)
+  createdById   String?   @db.Uuid
+  createdBy     User?     @relation("RecurringCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt     DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt     DateTime  @updatedAt @db.Timestamptz(3)
+
+  services RecurringBookingService[]
+  bookings Booking[]
+
+  @@index([customerId])
+  @@map("recurring_bookings")
+}
+
+/// قائمة الخدمات المتناوبة بالترتيب (التكرار مسموح): خدمة الموعد k = position (k mod n)
+model RecurringBookingService {
+  recurringId String           @db.Uuid
+  recurring   RecurringBooking @relation(fields: [recurringId], references: [id], onDelete: Cascade)
+  position    Int
+  serviceId   String           @db.Uuid
+  service     Service          @relation(fields: [serviceId], references: [id], onDelete: Restrict)
+
+  @@id([recurringId, position])
+  @@index([serviceId])
+  @@map("recurring_booking_services")
 }

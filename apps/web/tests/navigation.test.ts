@@ -31,6 +31,7 @@ describe('قوائم التنقل حسب الدور', () => {
       'bookings',
       'stats',
       'customers',
+      'recurring',
       'services',
       'users',
       'settings',
@@ -38,6 +39,7 @@ describe('قوائم التنقل حسب الدور', () => {
     assert.deepEqual(keys(ALL_PERMISSIONS, 'bottom'), ['schedule', 'bookings', 'stats'])
     assert.deepEqual(keys(ALL_PERMISSIONS, 'more'), [
       'customers',
+      'recurring',
       'services',
       'users',
       'settings',
@@ -45,10 +47,15 @@ describe('قوائم التنقل حسب الدور', () => {
     ])
   })
 
-  it('المشرف: الجدول والحجوزات والزبائن وحسابي فقط — لا إحصائيات ولا خدمات', () => {
-    assert.deepEqual(keys(STAFF_PERMISSIONS, 'sidebar'), ['schedule', 'bookings', 'customers'])
+  it('المشرف: الجدول والحجوزات والزبائن والحجوزات الدورية وحسابي — لا إحصائيات ولا خدمات', () => {
+    assert.deepEqual(keys(STAFF_PERMISSIONS, 'sidebar'), [
+      'schedule',
+      'bookings',
+      'customers',
+      'recurring',
+    ])
     assert.deepEqual(keys(STAFF_PERMISSIONS, 'bottom'), ['schedule', 'bookings'])
-    assert.deepEqual(keys(STAFF_PERMISSIONS, 'more'), ['customers', 'account'])
+    assert.deepEqual(keys(STAFF_PERMISSIONS, 'more'), ['customers', 'recurring', 'account'])
   })
 
   it('المشرف لا يرى زر الإحصائيات ولا الخدمات في أي موضع', () => {

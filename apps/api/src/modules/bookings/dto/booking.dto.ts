@@ -137,6 +137,11 @@ export class BookingsQueryDto extends PaginationQueryDto {
   @IsUUID()
   customerId?: string
 
+  @ApiPropertyOptional({ format: 'uuid', description: 'مواعيد حجز دوري معيّن' })
+  @IsOptional()
+  @IsUUID()
+  recurringId?: string
+
   @ApiPropertyOptional({ enum: ['asc', 'desc'], default: 'desc' })
   @IsOptional()
   @Matches(/^(asc|desc)$/)

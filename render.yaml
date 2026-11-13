@@ -35,3 +35,8 @@ services:
       # حتى لا تُطفئ الخطة المجانية الخادم بعد 15 دقيقة خمول
       - key: KEEP_ALIVE_INTERVAL_MINUTES
         value: '10'
+      # الحجوزات الدورية: تُولَّد مواعيدها مسبقاً لـ 56 يوماً قادمة، وتُسدّ الفراغات كل 6 ساعات (360 دقيقة)
+      - key: RECURRING_HORIZON_DAYS
+        value: '56'
+      - key: RECURRING_SYNC_MINUTES
+        value: '360'

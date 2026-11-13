@@ -77,6 +77,9 @@ function booking(over: Record<string, unknown>) {
     completedAt: null,
     cancelledAt: null,
     createdById: null,
+    recurringId: null,
+    occurrenceDate: null,
+    recurringEdited: false,
     createdAt: new Date(),
     updatedAt: new Date(),
     ...over,
@@ -160,6 +163,7 @@ function freshDb() {
       // غداً
       booking({ id: ID.future, startAt: at(34) }),
     ] as any[],
+    series: [] as any[],
   }
 }
 
@@ -222,6 +226,21 @@ const withRelations = (b: any) => ({
       }
     : null,
   createdBy: null,
+  recurring: b.recurringId
+    ? (() => {
+        const r = db.series.find((x) => x.id === b.recurringId)
+        return r ? { stoppedAt: r.stoppedAt, endDate: r.endDate } : null
+      })()
+    : null,
+})
+
+const withSeries = (r: any) => ({
+  ...r,
+  customer: (() => {
+    const c = db.customers.find((x) => x.id === r.customerId)
+    return { id: c.id, name: c.name, phone: c.phone }
+  })(),
+  services: [...r.services].sort((a: any, b: any) => a.position - b.position),
 })
 
 const fakePrisma: any = {
@@ -273,7 +292,7 @@ const fakePrisma: any = {
             .length,
         },
       })),
-    count: async () => db.customers.length,
+    count: async ({ where }: any = {}) => db.customers.filter((c) => matches(c, where)).length,
     create: async ({ data }: any) => {
       const row = {
         id: randomUUID(),
@@ -340,6 +359,77 @@ const fakePrisma: any = {
       ),
     delete: async ({ where }: any) => {
       db.bookings = db.bookings.filter((b) => b.id !== where.id)
+    },
+    createMany: async ({ data, skipDuplicates }: any) => {
+      let count = 0
+      for (const d of data) {
+        const dup = db.bookings.some(
+          (b) =>
+            b.recurringId &&
+            b.recurringId === d.recurringId &&
+            same(b.occurrenceDate, d.occurrenceDate),
+        )
+        if (dup) {
+          if (!skipDuplicates) throw new Error('unique violation')
+          continue
+        }
+        db.bookings.push(booking({ id: randomUUID(), status: 'ACTIVE', ...d }))
+        count++
+      }
+      return { count }
+    },
+    deleteMany: async ({ where }: any) => {
+      const doomed = db.bookings.filter((b) => matches(b, where))
+      db.bookings = db.bookings.filter((b) => !doomed.includes(b))
+      return { count: doomed.length }
+    },
+  },
+  recurringBooking: {
+    findMany: async (args: any) =>
+      page(
+        db.series.filter((r) => matches(r, args.where)),
+        args,
+      ).map(withSeries),
+    findUnique: async ({ where }: any) => {
+      const row = db.series.find((r) => r.id === where.id)
+      return row ? withSeries(row) : null
+    },
+    count: async ({ where }: any = {}) => db.series.filter((r) => matches(r, where)).length,
+    create: async ({ data }: any) => {
+      const id = randomUUID()
+      const { services, ...rest } = data
+      const row = {
+        id,
+        stoppedAt: null,
+        notes: null,
+        endDate: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        ...rest,
+        services: services.create.map((s: any) => ({ recurringId: id, ...s })),
+      }
+      db.series.push(row)
+      return row
+    },
+    update: async ({ where, data }: any) => {
+      const clean = Object.fromEntries(Object.entries(data).filter(([, v]) => v !== undefined))
+      return Object.assign(
+        db.series.find((r) => r.id === where.id),
+        clean,
+      )
+    },
+  },
+  recurringBookingService: {
+    deleteMany: async ({ where }: any) => {
+      const r = db.series.find((x) => x.id === where.recurringId)
+      const count = r.services.length
+      r.services = []
+      return { count }
+    },
+    createMany: async ({ data }: any) => {
+      const r = db.series.find((x) => x.id === data[0].recurringId)
+      r.services.push(...data)
+      return { count: data.length }
     },
   },
   $transaction: async (arg: any) => (Array.isArray(arg) ? Promise.all(arg) : arg(fakePrisma)),
@@ -625,6 +715,158 @@ describe('مشرف الحجوزات مقابل المدير (e2e بلا قاعد
       expect(s.body.items[0]).not.toHaveProperty('lastVisitAt')
       const a = await admin.get('/api/customers').expect(200)
       expect(a.body.items[0].visits).toBe(2)
+    })
+  })
+
+  describe('الحجوزات الدورية', () => {
+    const tomorrow = addDays(today, 1)
+    const body = (over: Record<string, unknown> = {}) => ({
+      customerId: ID.c1,
+      startDate: tomorrow,
+      startTime: '12:00',
+      intervalWeeks: 1,
+      serviceIds: [ID.s1],
+      ...over,
+    })
+    const generated = () => db.bookings.filter((b) => b.recurringId)
+
+    it('المشرف ينشئ سلسلة أسبوعية: 8 مواعيد بسعر الخدمة المحفوظ، وبلا مال في الاستجابة', async () => {
+      const res = await staff.post('/api/recurring-bookings').send(body()).expect(201)
+      expect(res.body.created).toBe(8)
+      expect(res.body.series.status).toBe('ACTIVE')
+      expect(res.body.series.upcoming).toHaveLength(8)
+      expectNoMoney(res.body)
+      expect(generated()).toHaveLength(8)
+      expect(generated().every((b) => b.price === 25000 && b.serviceName === 'شعر')).toBe(true)
+      expect(generated().every((b) => b.createdById === ID.staffUser)).toBe(true)
+    })
+
+    it('price في الجسم لا يؤثر (يُحذف بالتحقق ولا حقل مالي في القالب)', async () => {
+      await staff
+        .post('/api/recurring-bookings')
+        .send(body({ price: 1, paidAmount: 1 }))
+        .expect(201)
+      expect(generated().every((b) => b.price === 25000)).toBe(true)
+    })
+
+    it('أسبوع نعم وأسبوع لا: 4 مواعيد في الأفق', async () => {
+      const res = await staff
+        .post('/api/recurring-bookings')
+        .send(body({ intervalWeeks: 2 }))
+        .expect(201)
+      expect(res.body.created).toBe(4)
+    })
+
+    it('تناوب خدمتين: تتبدّل الخدمة موعداً بعد موعد', async () => {
+      await staff
+        .post('/api/recurring-bookings')
+        .send(body({ serviceIds: [ID.s1, ID.s2] }))
+        .expect(201)
+      const names = generated()
+        .sort((a, b) => a.startAt.getTime() - b.startAt.getTime())
+        .map((b) => b.serviceName)
+      expect(names.slice(0, 4)).toEqual(['شعر', 'ذقن', 'شعر', 'ذقن'])
+    })
+
+    it('تاريخ سابق → 400 بالعربية على startDate ولا كتابة', async () => {
+      const res = await staff
+        .post('/api/recurring-bookings')
+        .send(body({ startDate: yesterday }))
+        .expect(400)
+      expect(res.body.errors.startDate).toBeDefined()
+      expect(db.series).toHaveLength(0)
+    })
+
+    it('تعارض الموعد الأول → 409 ولا سلسلة', async () => {
+      // حجز الغد 10:00 (ID.future) — نطلب 10:15 فيتداخل
+      const res = await staff
+        .post('/api/recurring-bookings')
+        .send(body({ startTime: '10:15' }))
+        .expect(409)
+      expect(res.body.errors.startTime).toBeDefined()
+      expect(db.series).toHaveLength(0)
+    })
+
+    it('المعاينة: بلا كتابة ولا مال', async () => {
+      const res = await staff
+        .post('/api/recurring-bookings/preview')
+        .send(body({ intervalWeeks: 2 }))
+        .expect(200)
+      expect(res.body.occurrences).toHaveLength(4)
+      expectNoMoney(res.body)
+      expect(db.series).toHaveLength(0)
+      expect(generated()).toHaveLength(0)
+    })
+
+    it('القائمة والتفاصيل: المشرف بلا مال، والمدير يرى أسعار الحجوزات المرفقة فقط', async () => {
+      const created = await staff.post('/api/recurring-bookings').send(body()).expect(201)
+      const id = created.body.series.id
+
+      const list = await staff.get('/api/recurring-bookings').expect(200)
+      expect(list.body).toHaveLength(1)
+      expect(list.body[0].next).not.toBeNull()
+      expectNoMoney(list.body)
+
+      expectNoMoney((await staff.get(`/api/recurring-bookings/${id}`).expect(200)).body)
+
+      const asAdmin = await admin.get(`/api/recurring-bookings/${id}`).expect(200)
+      expect(asAdmin.body.upcoming[0].price).toBe(25000)
+      expect(Object.keys(asAdmin.body)).not.toContain('price')
+    })
+
+    it('سلسلة غير موجودة → 404', async () => {
+      await staff.get(`/api/recurring-bookings/${randomUUID()}`).expect(404)
+      await staff.post(`/api/recurring-bookings/${randomUUID()}/stop`).expect(404)
+    })
+
+    it('تعديل القالب: يعيد كتابة المواعيد غير المعدّلة ويبقي المعدّل يدوياً', async () => {
+      const created = await staff.post('/api/recurring-bookings').send(body()).expect(201)
+      const id = created.body.series.id
+      const first = created.body.series.upcoming[0].id
+      await staff.patch(`/api/bookings/${first}`).send({ notes: 'خاص' }).expect(200)
+      expect(db.bookings.find((b) => b.id === first).recurringEdited).toBe(true)
+
+      const res = await staff
+        .patch(`/api/recurring-bookings/${id}`)
+        .send({ startTime: '13:00' })
+        .expect(200)
+      expect(res.body).toMatchObject({ removed: 7, created: 7, keptEdited: 1 })
+      expect(generated()).toHaveLength(8)
+      expect(db.bookings.find((b) => b.id === first).notes).toBe('خاص') // لم يُمسّ
+      expectNoMoney(res.body)
+    })
+
+    it('الإيقاف: يحذف غير المعدّل ويبقي المعدّل؛ والتعديل بعده 409', async () => {
+      const created = await staff.post('/api/recurring-bookings').send(body()).expect(201)
+      const id = created.body.series.id
+      const first = created.body.series.upcoming[0].id
+      await staff.patch(`/api/bookings/${first}`).send({ notes: 'خاص' }).expect(200)
+
+      const res = await staff.post(`/api/recurring-bookings/${id}/stop`).expect(200)
+      expect(res.body).toMatchObject({ removed: 7, keptEdited: 1 })
+      expect(res.body.series.status).toBe('STOPPED')
+      expect(generated().map((b) => b.id)).toEqual([first])
+
+      await staff.patch(`/api/recurring-bookings/${id}`).send({ startTime: '14:00' }).expect(409)
+    })
+
+    it('حذف موعد دوري قادم نهائياً (المدير) ← 409 حتى يُوقف الحجز الدوري (D8)', async () => {
+      const created = await staff.post('/api/recurring-bookings').send(body()).expect(201)
+      const id = created.body.series.id
+      const target = created.body.series.upcoming[1].id
+
+      const denied = await admin.delete(`/api/bookings/${target}`).expect(409)
+      expect(denied.body.message).toContain('حجز دوري')
+      expect(db.bookings.some((b) => b.id === target)).toBe(true)
+
+      await admin.post(`/api/recurring-bookings/${id}/stop`).expect(200)
+      // بعد الإيقاف حُذف غير المعدّل أصلاً فلا شيء متبقٍ من السلسلة
+      expect(generated()).toHaveLength(0)
+    })
+
+    it('المشرف لا يحذف الحجز نهائياً أصلاً (403)', async () => {
+      const created = await staff.post('/api/recurring-bookings').send(body()).expect(201)
+      await staff.delete(`/api/bookings/${created.body.series.upcoming[0].id}`).expect(403)
     })
   })
 })

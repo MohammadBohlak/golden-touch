@@ -53,7 +53,16 @@ function onSaved(saved: Booking) {
       >
         <AppButton to="/" variant="secondary" size="sm">العودة للجدول</AppButton>
       </EmptyState>
-      <BookingForm v-else-if="booking" key="form" :booking="booking" @saved="onSaved" />
+      <div v-else-if="booking" key="form" class="flex flex-col gap-4">
+        <div
+          v-if="booking.recurringId"
+          class="flex items-start gap-2 rounded-2xl bg-gold-50 p-3 text-sm text-gold-800"
+        >
+          <AppIcon name="repeat" :size="18" class="mt-0.5 shrink-0" />
+          <p>موعد من حجز دوري: تعديلك لهذا الموعد وحده، ولن يتغيّر بتعديل الحجز الدوري لاحقاً.</p>
+        </div>
+        <BookingForm :booking="booking" @saved="onSaved" />
+      </div>
     </Transition>
   </div>
 </template>

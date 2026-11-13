@@ -1,4 +1,4 @@
-import { ForbiddenException, NotFoundException } from '@nestjs/common'
+import { ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common'
 import { BookingStatus } from '@prisma/client'
 import type { AuthUser } from '../../common/types/auth-user'
 import type { PrismaService } from '../../prisma/prisma.service'
@@ -316,5 +316,89 @@ describe('BookingsService — الكتابة', () => {
     const [{ data }] = prisma.booking.create.mock.calls[0] as [{ data: Record<string, unknown> }]
     expect(data.price).toBe(25000)
     expect(result).not.toHaveProperty('price')
+  })
+})
+
+describe('BookingsService — الحجوزات الدورية', () => {
+  const recurringRow = (over: Record<string, unknown> = {}) =>
+    row({
+      recurringId: 'r1',
+      occurrenceDate: new Date('2026-10-17T00:00:00Z'),
+      recurring: { stoppedAt: null, endDate: null },
+      ...over,
+    })
+
+  describe('update', () => {
+    it('تعديل موعد دوري يضع recurringEdited فلا تعيد كتابته تعديلات السلسلة', async () => {
+      const { service, prisma } = setup()
+      prisma.booking.findUnique.mockResolvedValue(recurringRow())
+      prisma.booking.update.mockResolvedValue(recurringRow())
+      await service.update('b1', { notes: 'x' } as never, STAFF)
+      const [{ data }] = prisma.booking.update.mock.calls[0] as [{ data: Record<string, unknown> }]
+      expect(data.recurringEdited).toBe(true)
+    })
+
+    it('الحجز العادي لا يُعلَّم', async () => {
+      const { service, prisma } = setup()
+      prisma.booking.findUnique.mockResolvedValue(row())
+      prisma.booking.update.mockResolvedValue(row())
+      await service.update('b1', { notes: 'x' } as never, STAFF)
+      const [{ data }] = prisma.booking.update.mock.calls[0] as [{ data: Record<string, unknown> }]
+      expect(data).not.toHaveProperty('recurringEdited')
+    })
+  })
+
+  describe('remove (D8)', () => {
+    const run = (found: unknown) => {
+      const { service, prisma } = setup()
+      prisma.booking.findUnique.mockResolvedValue(found)
+      const del = jest.fn().mockResolvedValue({})
+      Object.assign(prisma.booking, { delete: del })
+      return { service, del }
+    }
+
+    it('موعد دوري قادم لسلسلة فعّالة ← 409 ولا حذف', async () => {
+      const { service, del } = run(recurringRow())
+      await expect(service.remove('b1')).rejects.toBeInstanceOf(ConflictException)
+      expect(del).not.toHaveBeenCalled()
+    })
+
+    it('سلسلة موقوفة ← يُحذف', async () => {
+      const { service, del } = run(
+        recurringRow({ recurring: { stoppedAt: new Date(), endDate: null } }),
+      )
+      await expect(service.remove('b1')).resolves.toEqual({ success: true })
+      expect(del).toHaveBeenCalledWith({ where: { id: 'b1' } })
+    })
+
+    it('موعد دوري ماضٍ (قبل أمس) ← يُحذف', async () => {
+      const { service, del } = run(
+        recurringRow({ occurrenceDate: new Date('2026-10-10T00:00:00Z') }),
+      )
+      await service.remove('b1')
+      expect(del).toHaveBeenCalled()
+    })
+
+    it('حجز عادي ← يُحذف', async () => {
+      const { service, del } = run(
+        row({ recurringId: null, occurrenceDate: null, recurring: null }),
+      )
+      await service.remove('b1')
+      expect(del).toHaveBeenCalled()
+    })
+
+    it('غير موجود ← 404', async () => {
+      const { service } = run(null)
+      await expect(service.remove('nope')).rejects.toBeInstanceOf(NotFoundException)
+    })
+  })
+
+  it('findAll: فلتر recurringId يصل إلى where', async () => {
+    const { service, prisma } = setup()
+    await service.findAll({ skip: 0, limit: 15, recurringId: 'r1' } as never, ADMIN)
+    const [{ where }] = prisma.booking.findMany.mock.calls[0] as [
+      { where: { recurringId?: string } },
+    ]
+    expect(where.recurringId).toBe('r1')
   })
 })

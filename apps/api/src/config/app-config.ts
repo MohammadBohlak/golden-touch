@@ -19,6 +19,10 @@ export class AppConfig {
     return this.config.get<string>('NODE_ENV') === 'production'
   }
 
+  get isTest(): boolean {
+    return this.config.get<string>('NODE_ENV') === 'test'
+  }
+
   get port(): number {
     return Number(this.config.get('PORT', 4000))
   }
@@ -57,6 +61,16 @@ export class AppConfig {
 
   get keepAliveIntervalMs(): number {
     return Number(this.config.get('KEEP_ALIVE_INTERVAL_MINUTES', 10)) * 60_000
+  }
+
+  /** أفق توليد الحجوزات الدورية بالأيام (docs/RECURRING_BOOKINGS_PLAN.md D1) */
+  get recurringHorizonDays(): number {
+    return Number(this.config.get('RECURRING_HORIZON_DAYS', 56))
+  }
+
+  /** فاصل مزامنة الحجوزات الدورية بالدقائق؛ 0 = معطّلة */
+  get recurringSyncMinutes(): number {
+    return Number(this.config.get('RECURRING_SYNC_MINUTES', 360))
   }
 
   get cookieName(): string {

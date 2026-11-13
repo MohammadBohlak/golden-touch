@@ -27,6 +27,8 @@ export const PERMISSIONS: Array<[key: string, description: string]> = [
   ['bookings.delete', 'حذف حجز نهائياً'],
   ['bookings.history', 'عرض الحجوزات السابقة وسجل الزبائن'],
   ['finance.read', 'عرض الأسعار والمبالغ المالية'],
+  ['recurring.read', 'عرض الحجوزات الدورية'],
+  ['recurring.manage', 'إنشاء الحجوزات الدورية وتعديلها وإيقافها'],
   ['stats.read', 'عرض الإحصائيات'],
   ['settings.read', 'عرض إعدادات الصالون'],
   ['settings.update', 'تعديل إعدادات الصالون'],
@@ -48,5 +50,7 @@ export const STAFF_PERMISSIONS: string[] = [
   'bookings.update',
   'bookings.complete', // تأكيد الحجز بسعره المحفوظ — لا يرى ولا يُدخل مبلغاً
   'bookings.cancel',
+  'recurring.read', // لا مال ولا ماضٍ في الـ API الدوري (docs/RECURRING_BOOKINGS_PLAN.md D11, D12)
+  'recurring.manage',
   'settings.read',
 ]

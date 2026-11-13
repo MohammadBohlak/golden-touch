@@ -73,6 +73,7 @@ apps/api/src/modules/whatsapp/
 4. **`modules/whatsapp/reminder.calc.ts`** (نقي) مع `reminder.calc.spec.ts`:
    - `REMINDER_PLACEHOLDERS = ['الاسم', 'الوقت', 'الخدمة', 'الصالون']`، `renderReminder(template, { name, time, service, shop })` يستبدل `{الاسم}` إلخ، و`unknownPlaceholders(template)` للتحقق.
    - القالب الافتراضي: `مرحباً {الاسم}،\nنذكّرك بموعدك في {الصالون} اليوم الساعة {الوقت} ({الخدمة}).`
+   - **توافق مع الحجوزات الدورية** (`docs/RECURRING_BOOKINGS_PLAN.md` D14): تُولَّد حجوزاتها قبل أسابيع بحالة تذكير `PENDING` الافتراضية فلا يصيبها `CREATED_LATE` (أُنشئت قبل نافذة التذكير بكثير)، وتعديل السلسلة يعيد إنشاء مواعيد جديدة بحالة `PENDING`؛ لا تغيير مطلوب في منطق التذكير.
    - **لا يُضاف عنصر `{السعر}` ولا أي مبلغ إلى `REMINDER_PLACEHOLDERS` أبداً**: التذكير يُرسَل للزبون، ويُعدَّل قالبه من إعدادات قد يصل إليها مشرف لا يرى المال (قرار `docs/STAFF_RESTRICTIONS_PLAN.md`).
    - `reminderDecision(booking, now, settings)` ← `'WAIT' | 'SEND' | { skip: reason }`:
      - `SEND` إن `startAt - minutesBefore <= now < startAt - 2min`.

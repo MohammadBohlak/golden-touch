@@ -10,7 +10,7 @@ import { paginated, PaginatedResponse } from '../../common/dto/pagination-query.
 import { isBookingOverlapError } from '../../common/filters/all-exceptions.filter'
 import type { AuthUser } from '../../common/types/auth-user'
 import { normalizePhone } from '../../common/utils/phone'
-import { addMinutes, dayRangeUtc, formatTime, toDateString } from '../../common/utils/time'
+import { addDays, addMinutes, dayRangeUtc, formatTime, toDateString } from '../../common/utils/time'
 import { PrismaService } from '../../prisma/prisma.service'
 import { SettingsService } from '../settings/settings.service'
 import { BLOCKING_STATUSES, bookingInclude, BookingWithRelations } from './booking.mapper'
@@ -35,10 +35,13 @@ import {
   CreateBookingDto,
   UpdateBookingDto,
 } from './dto/booking.dto'
+import { blocksHardDelete } from '../recurring/recurrence'
+import { dateOnly } from '../recurring/recurring.mapper'
 import { computeGaps, computeSlots, Interval, shopWindow } from './schedule'
 
 type Tx = Prisma.TransactionClient
 
+const MSG_RECURRING_DELETE = 'هذا موعد من حجز دوري: ألغِه، أو أوقف الحجز الدوري ثم احذفه'
 const NOT_ACTIVE = 'لا يمكن تعديل موعد حجز مكتمل أو ملغي — أعد فتحه أولاً'
 
 /** ما يحدّده المستخدم: قدراته + أول لحظة يراها (null = يرى كل الماضي) */
@@ -155,6 +158,7 @@ export class BookingsService {
     const where: Prisma.BookingWhereInput = {}
     if (query.status) where.status = query.status
     if (query.customerId) where.customerId = query.customerId
+    if (query.recurringId) where.recurringId = query.recurringId
 
     // الحدّ الأدنى لا ينزل تحت cutoff مهما كانت معاملات الطلب (from/to/بدونهما)
     const requestedFrom = query.from ? dayRangeUtc(query.from, timezone).start : null
@@ -275,6 +279,8 @@ export class BookingsService {
     }
 
     const data: Prisma.BookingUncheckedUpdateInput = {}
+    // أي تعديل يدوي لموعد دوري يحميه من إعادة الكتابة عند تعديل السلسلة (D9)
+    if (booking.recurringId) data.recurringEdited = true
     let durationMinutes = booking.durationMinutes
     if (dto.serviceId && dto.serviceId !== booking.serviceId) {
       const service = await this.prisma.service.findFirst({
@@ -394,10 +400,37 @@ export class BookingsService {
     return toBookingView(reopened, scope.caps)
   }
 
-  /** الحذف النهائي (bookings.delete للمدير فقط) — لا نافذة زمنية هنا */
+  /**
+   * الحذف النهائي (bookings.delete للمدير فقط) — لا نافذة زمنية هنا.
+   * موعد دوري قادم لا يُحذف نهائياً ما دامت سلسلته تولّد (وإلا أعاد المولّد إنشاءه): يُلغى أو تُوقف السلسلة.
+   */
   async remove(id: string) {
-    const exists = await this.prisma.booking.count({ where: { id } })
-    if (!exists) throw new NotFoundException('الحجز غير موجود')
+    const booking = await this.prisma.booking.findUnique({
+      where: { id },
+      select: {
+        recurringId: true,
+        occurrenceDate: true,
+        recurring: { select: { stoppedAt: true, endDate: true } },
+      },
+    })
+    if (!booking) throw new NotFoundException('الحجز غير موجود')
+    if (booking.recurringId) {
+      const { timezone } = await this.settings.get()
+      const blocked = blocksHardDelete(
+        {
+          recurringId: booking.recurringId,
+          occurrenceDate: booking.occurrenceDate ? dateOnly(booking.occurrenceDate) : null,
+        },
+        booking.recurring
+          ? {
+              stoppedAt: booking.recurring.stoppedAt,
+              endDate: booking.recurring.endDate ? dateOnly(booking.recurring.endDate) : null,
+            }
+          : null,
+        addDays(toDateString(new Date(), timezone), -1),
+      )
+      if (blocked) throw new ConflictException(MSG_RECURRING_DELETE)
+    }
     await this.prisma.booking.delete({ where: { id } })
     return { success: true }
   }

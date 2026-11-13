@@ -33,6 +33,10 @@ watch(open, (isOpen) => {
 })
 
 const b = computed(() => props.booking)
+/** موعد دوري قادم: لا يُحذف نهائياً (D8) فيُستبدل زر الحذف بإرشاد */
+const deleteBlocked = computed(
+  () => b.value !== null && b.value.status !== 'ACTIVE' && isUpcomingRecurring(b.value, new Date()),
+)
 const dateLabel = computed(() =>
   b.value ? formatDateLong(dateInTz(b.value.startAt, props.timezone)) : '',
 )
@@ -273,6 +277,39 @@ async function remove() {
                   />
                 </div>
               </div>
+              <div
+                v-if="b.recurringId"
+                class="col-span-2 flex items-start gap-3 rounded-2xl border border-line p-3"
+              >
+                <AppIcon name="repeat" :size="20" class="mt-0.5 shrink-0 text-gold-800" />
+                <div class="min-w-0 flex-1">
+                  <dt class="text-sm font-semibold text-fg-muted">حجز دوري</dt>
+                  <dd class="text-sm">
+                    تعديل هذا الموعد لا يغيّر بقية المواعيد.
+                    <template v-if="deleteBlocked">لإزالته نهائياً أوقف الحجز الدوري.</template>
+                  </dd>
+                </div>
+                <AppButton
+                  v-if="can('recurring.read')"
+                  :to="`/recurring/${b.recurringId}`"
+                  variant="secondary"
+                  size="sm"
+                  @click="open = false"
+                >
+                  عرض
+                </AppButton>
+              </div>
+              <div v-else-if="b.status === 'ACTIVE' && can('recurring.manage')" class="col-span-2">
+                <AppButton
+                  :to="{ path: '/recurring/new', query: recurringQueryFrom(b, timezone) }"
+                  variant="ghost"
+                  size="sm"
+                  icon="repeat"
+                  @click="open = false"
+                >
+                  اجعله دورياً
+                </AppButton>
+              </div>
               <div v-if="b.notes" class="col-span-2 rounded-2xl bg-gold-50 p-3">
                 <dt class="text-xs font-semibold text-gold-800">ملاحظات</dt>
                 <dd class="mt-0.5 text-[15px] whitespace-pre-line">{{ b.notes }}</dd>
@@ -399,7 +436,7 @@ async function remove() {
         </template>
         <template v-else>
           <AppButton
-            v-if="can('bookings.delete')"
+            v-if="can('bookings.delete') && !deleteBlocked"
             variant="ghost"
             icon="trash"
             class="text-danger sm:me-auto"

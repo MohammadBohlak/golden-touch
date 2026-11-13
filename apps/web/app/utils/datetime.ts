@@ -66,6 +66,16 @@ export function startOfWeek(dateStr: string): string {
   return addDays(dateStr, -((weekdayOf(dateStr) + 1) % 7))
 }
 
+/** يرفع التاريخ إلى الحدّ الأدنى إن وُجد (لمن لا يرى ما قبل اليوم) */
+export function clampDate(dateStr: string, min?: string): string {
+  return min && dateStr < min ? min : dateStr
+}
+
+/** هل في الأسبوع السابق لهذا المرسى يوم مسموح؟ (آخر أيامه = المرسى − 1) */
+export function hasSelectableBefore(anchor: string, min?: string): boolean {
+  return !min || addDays(anchor, -1) >= min
+}
+
 export function startOfMonth(dateStr: string): string {
   return `${dateStr.slice(0, 7)}-01`
 }

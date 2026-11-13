@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { Service } from '~/types/api'
 
-definePageMeta({ title: 'الخدمات والأسعار', permission: 'services.read' })
+definePageMeta({ title: 'الخدمات والأسعار', permission: 'services.update' })
 
 const servicesStore = useServicesStore()
 const toast = useToast()
@@ -146,12 +146,6 @@ async function remove(service: Service) {
         </li>
       </ListTransition>
     </FadeTransition>
-
-    <ExpandTransition>
-      <p v-if="!can('services.update')" class="text-center text-sm text-fg-muted">
-        تعديل الخدمات والأسعار متاح للمدير فقط.
-      </p>
-    </ExpandTransition>
 
     <ServiceFormDialog v-model:open="dialogOpen" :service="editing" />
   </div>

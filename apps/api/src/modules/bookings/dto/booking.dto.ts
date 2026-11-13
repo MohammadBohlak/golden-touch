@@ -94,12 +94,17 @@ export class UpdateBookingDto extends PartialType(OmitType(CreateBookingDto, ['c
 }
 
 export class CompleteBookingDto {
-  @ApiProperty({ example: 25000, description: 'المبلغ المدفوع فعلياً من الزبون' })
+  @ApiPropertyOptional({
+    example: 25000,
+    description:
+      'المبلغ المدفوع فعلياً — للمدير فقط (يتطلب finance.read). عند غيابه يُسجَّل سعر الحجز تلقائياً، وهذا ما يفعله المشرف.',
+  })
+  @IsOptional()
   @Type(() => Number)
   @IsInt({ message: 'المبلغ يجب أن يكون رقماً صحيحاً' })
   @Min(0, { message: 'المبلغ لا يمكن أن يكون سالباً' })
   @Max(MONEY_MAX)
-  paidAmount: number
+  paidAmount?: number
 }
 
 export class CancelBookingDto {

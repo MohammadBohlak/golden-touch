@@ -22,7 +22,9 @@ const emit = defineEmits<{ saved: [booking: Booking] }>()
 const { $api } = useNuxtApp()
 const servicesStore = useServicesStore()
 const { timezone, today } = useShopTime()
-const { isAdmin } = useAuth()
+const { can } = useAuth()
+// السعر المخصص وإجمالي الشريط لمن يملك finance.read فقط؛ سواه يحجز بسعر الخدمة تلقائياً
+const canPrice = computed(() => can('finance.read'))
 
 const isEdit = computed(() => Boolean(props.booking))
 const formError = ref('')
@@ -164,7 +166,7 @@ const onSubmit = handleSubmit(async (values) => {
     body.customerPhone = values.customerPhone || undefined
   }
   if (values.durationMinutes) body.durationMinutes = values.durationMinutes
-  if (values.price != null) body.price = values.price
+  if (canPrice.value && values.price != null) body.price = values.price
 
   try {
     const saved = isEdit.value
@@ -212,7 +214,7 @@ const onSubmit = handleSubmit(async (values) => {
           title="لا توجد خدمات فعّالة"
           description="أضف خدمات الحلاقة وأسعارها أولاً."
         >
-          <AppButton v-if="isAdmin" to="/services" variant="secondary" size="sm"
+          <AppButton v-if="can('services.update')" to="/services" variant="secondary" size="sm"
             >إدارة الخدمات</AppButton
           >
         </EmptyState>
@@ -333,10 +335,12 @@ const onSubmit = handleSubmit(async (values) => {
     <Disclosure v-model:open="extrasOpen">
       <template #summary>
         <AppIcon name="note" :size="18" />
-        <span class="font-bold">ملاحظات وسعر أو مدة مخصصة</span>
+        <span class="font-bold">{{
+          canPrice ? 'ملاحظات وسعر أو مدة مخصصة' : 'ملاحظات أو مدة مخصصة'
+        }}</span>
       </template>
       <div class="flex flex-col gap-4 pt-1">
-        <div class="grid grid-cols-2 gap-3">
+        <div :class="cn('grid gap-3', canPrice && 'grid-cols-2')">
           <FormField
             v-slot="{ field, id, invalid, describedBy }"
             name="durationMinutes"
@@ -360,6 +364,7 @@ const onSubmit = handleSubmit(async (values) => {
             />
           </FormField>
           <FormField
+            v-if="canPrice"
             v-slot="{ field, id, invalid, describedBy }"
             name="price"
             label="سعر متفق عليه"
@@ -401,7 +406,7 @@ const onSubmit = handleSubmit(async (values) => {
             {{ summary || 'اختر الخدمة والوقت' }}
           </p>
         </Transition>
-        <p class="text-lg font-extrabold text-gold-300 tabular-nums">
+        <p v-if="canPrice" class="text-lg font-extrabold text-gold-300 tabular-nums">
           <AnimatedNumber :value="price" :format="formatMoney" />
         </p>
       </div>

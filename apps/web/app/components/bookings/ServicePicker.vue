@@ -51,6 +51,7 @@ const model = defineModel<string | null | undefined>()
           {{ formatDuration(service.durationMinutes) }}
         </span>
         <span
+          v-if="service.price !== undefined"
           :class="
             cn(
               'font-bold tabular-nums transition-colors',

@@ -100,33 +100,54 @@ async function remove() {
         </div>
 
         <dl class="grid grid-cols-2 gap-3 lg:grid-cols-4">
-          <div class="rounded-2xl bg-ink-950 p-4 text-white shadow-card">
-            <dt class="text-sm text-ink-300">الزيارات</dt>
+          <template v-if="data.stats.visits !== undefined">
+            <div class="rounded-2xl bg-ink-950 p-4 text-white shadow-card">
+              <dt class="text-sm text-ink-300">الزيارات</dt>
+              <dd class="text-2xl font-extrabold text-gold-300 tabular-nums">
+                <AnimatedNumber :value="data.stats.visits" appear />
+              </dd>
+            </div>
+            <div
+              v-if="data.stats.totalSpent !== undefined"
+              class="rounded-2xl bg-surface p-4 shadow-card"
+            >
+              <dt class="text-sm text-fg-muted">مجموع ما دفعه</dt>
+              <dd class="text-xl font-extrabold tabular-nums">
+                <AnimatedNumber :value="data.stats.totalSpent" :format="formatMoney" appear />
+              </dd>
+            </div>
+            <div class="rounded-2xl bg-surface p-4 shadow-card">
+              <dt class="text-sm text-fg-muted">آخر زيارة</dt>
+              <dd class="font-bold">
+                {{
+                  data.stats.lastVisitAt
+                    ? relativeDayLabel(dateInTz(data.stats.lastVisitAt, timezone), today)
+                    : '—'
+                }}
+              </dd>
+            </div>
+            <div
+              :class="
+                cn(
+                  'rounded-2xl bg-surface p-4 shadow-card',
+                  data.stats.totalSpent === undefined && 'col-span-2 lg:col-span-1',
+                )
+              "
+            >
+              <dt class="text-sm text-fg-muted">قادمة / ملغاة</dt>
+              <dd class="font-bold tabular-nums">
+                <AnimatedNumber :value="data.stats.upcoming" appear /> /
+                <AnimatedNumber :value="data.stats.cancelled ?? 0" appear />
+              </dd>
+            </div>
+          </template>
+          <div
+            v-else
+            class="col-span-2 rounded-2xl bg-ink-950 p-4 text-white shadow-card lg:col-span-4"
+          >
+            <dt class="text-sm text-ink-300">حجوزات قادمة</dt>
             <dd class="text-2xl font-extrabold text-gold-300 tabular-nums">
-              <AnimatedNumber :value="data.stats.visits" appear />
-            </dd>
-          </div>
-          <div class="rounded-2xl bg-surface p-4 shadow-card">
-            <dt class="text-sm text-fg-muted">مجموع ما دفعه</dt>
-            <dd class="text-xl font-extrabold tabular-nums">
-              <AnimatedNumber :value="data.stats.totalSpent" :format="formatMoney" appear />
-            </dd>
-          </div>
-          <div class="rounded-2xl bg-surface p-4 shadow-card">
-            <dt class="text-sm text-fg-muted">آخر زيارة</dt>
-            <dd class="font-bold">
-              {{
-                data.stats.lastVisitAt
-                  ? relativeDayLabel(dateInTz(data.stats.lastVisitAt, timezone), today)
-                  : '—'
-              }}
-            </dd>
-          </div>
-          <div class="rounded-2xl bg-surface p-4 shadow-card">
-            <dt class="text-sm text-fg-muted">قادمة / ملغاة</dt>
-            <dd class="font-bold tabular-nums">
-              <AnimatedNumber :value="data.stats.upcoming" appear /> /
-              <AnimatedNumber :value="data.stats.cancelled" appear />
+              <AnimatedNumber :value="data.stats.upcoming" appear />
             </dd>
           </div>
         </dl>
@@ -144,14 +165,18 @@ async function remove() {
 
         <section aria-labelledby="history" class="flex flex-col gap-2.5">
           <h2 id="history" class="flex items-center gap-2 font-bold">
-            <AppIcon name="history" :size="18" />
-            سجل الحجوزات
+            <AppIcon :name="data.stats.visits !== undefined ? 'history' : 'calendar'" :size="18" />
+            {{ data.stats.visits !== undefined ? 'سجل الحجوزات' : 'الحجوزات القادمة' }}
           </h2>
           <ExpandTransition>
             <EmptyState
               v-if="!data.bookings.length"
               icon="calendar"
-              title="لا توجد حجوزات لهذا الزبون"
+              :title="
+                data.stats.visits !== undefined
+                  ? 'لا توجد حجوزات لهذا الزبون'
+                  : 'لا توجد حجوزات قادمة لهذا الزبون'
+              "
             />
           </ExpandTransition>
           <ListTransition class="relative flex flex-col gap-2.5">

@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common'
@@ -9,10 +10,23 @@ import { paginated, PaginatedResponse } from '../../common/dto/pagination-query.
 import { isBookingOverlapError } from '../../common/filters/all-exceptions.filter'
 import type { AuthUser } from '../../common/types/auth-user'
 import { normalizePhone } from '../../common/utils/phone'
-import { addMinutes, dayRangeUtc, formatTime } from '../../common/utils/time'
+import { addMinutes, dayRangeUtc, formatTime, toDateString } from '../../common/utils/time'
 import { PrismaService } from '../../prisma/prisma.service'
 import { SettingsService } from '../settings/settings.service'
 import { BLOCKING_STATUSES, bookingInclude, BookingWithRelations } from './booking.mapper'
+import {
+  assertCanReopen,
+  BookingCaps,
+  BookingView,
+  buildDaySummary,
+  capsOf,
+  historyCutoff,
+  MSG_NO_FINANCE,
+  MSG_NO_HISTORY,
+  MSG_NO_PAST_WRITE,
+  resolveCompletion,
+  toBookingView,
+} from './booking.visibility'
 import {
   AvailabilityQueryDto,
   BookingsQueryDto,
@@ -27,6 +41,13 @@ type Tx = Prisma.TransactionClient
 
 const NOT_ACTIVE = 'لا يمكن تعديل موعد حجز مكتمل أو ملغي — أعد فتحه أولاً'
 
+/** ما يحدّده المستخدم: قدراته + أول لحظة يراها (null = يرى كل الماضي) */
+interface Scope {
+  caps: BookingCaps
+  timezone: string
+  cutoff: Date | null
+}
+
 @Injectable()
 export class BookingsService {
   constructor(
@@ -34,16 +55,36 @@ export class BookingsService {
     private readonly settings: SettingsService,
   ) {}
 
+  /** نطاق رؤية المستخدم: من لا يملك bookings.history لا يرى ما قبل بداية اليوم (بتوقيت الصالون) */
+  private async scopeOf(actor: AuthUser): Promise<Scope> {
+    const { timezone } = await this.settings.get()
+    const caps = capsOf(actor)
+    return { caps, timezone, cutoff: caps.history ? null : historyCutoff(new Date(), timezone) }
+  }
+
+  /** حجز ضمن نطاق المستخدم؛ السابق يظهر له «غير موجود» (404) لا «ممنوع» كي لا يكشف وجوده */
+  private async loadVisible(id: string, scope: Scope): Promise<BookingWithRelations> {
+    const booking = await this.prisma.booking.findUnique({ where: { id }, include: bookingInclude })
+    if (!booking || (scope.cutoff && booking.startAt < scope.cutoff)) {
+      throw new NotFoundException('الحجز غير موجود')
+    }
+    return booking
+  }
+
   // ───────────────────────── القراءة ─────────────────────────
 
   /** جدول يوم كامل: الحجوزات + الفراغات المتاحة + ملخص */
-  async day(date: string) {
+  async day(date: string, actor: AuthUser) {
     const settings = await this.settings.get()
+    const caps = capsOf(actor)
+    const now = new Date()
+    if (!caps.history && date < toDateString(now, settings.timezone)) {
+      throw new ForbiddenException(MSG_NO_HISTORY)
+    }
     const window = shopWindow(date, settings)
     const calendar = dayRangeUtc(date, settings.timezone)
     const rangeStart = window.start < calendar.start ? window.start : calendar.start
     const rangeEnd = window.end > calendar.end ? window.end : calendar.end
-    const now = new Date()
 
     const bookings = await this.prisma.booking.findMany({
       where: { startAt: { gte: rangeStart, lt: rangeEnd } },
@@ -51,8 +92,6 @@ export class BookingsService {
       include: bookingInclude,
     })
     const blocking = bookings.filter((b) => b.status !== BookingStatus.CANCELLED)
-    const completed = bookings.filter((b) => b.status === BookingStatus.COMPLETED)
-    const active = bookings.filter((b) => b.status === BookingStatus.ACTIVE)
 
     return {
       date,
@@ -61,24 +100,17 @@ export class BookingsService {
       closed: window.closed,
       window: { start: window.start, end: window.end },
       now,
-      bookings,
+      bookings: bookings.map((b) => toBookingView(b, caps)),
       gaps: computeGaps({
         window,
         busy: blocking.map((b) => ({ start: b.startAt, end: b.endAt })),
         now,
       }),
-      summary: {
-        total: blocking.length,
-        active: active.length,
-        completed: completed.length,
-        cancelled: bookings.length - blocking.length,
-        revenue: completed.reduce((sum, b) => sum + (b.paidAmount ?? 0), 0),
-        expected: active.reduce((sum, b) => sum + b.price, 0),
-      },
+      summary: buildDaySummary(bookings, caps),
     }
   }
 
-  /** فترات البدء المتاحة لخدمة/مدة في يوم معيّن */
+  /** فترات البدء المتاحة لخدمة/مدة في يوم معيّن (فترات فقط — لا مال ولا تفاصيل حجوزات) */
   async availability(query: AvailabilityQueryDto) {
     const settings = await this.settings.get()
     let duration = query.durationMinutes
@@ -118,15 +150,19 @@ export class BookingsService {
     }
   }
 
-  async findAll(query: BookingsQueryDto): Promise<PaginatedResponse<BookingWithRelations>> {
-    const settings = await this.settings.get()
+  async findAll(query: BookingsQueryDto, actor: AuthUser): Promise<PaginatedResponse<BookingView>> {
+    const { caps, timezone, cutoff } = await this.scopeOf(actor)
     const where: Prisma.BookingWhereInput = {}
     if (query.status) where.status = query.status
     if (query.customerId) where.customerId = query.customerId
-    if (query.from || query.to) {
+
+    // الحدّ الأدنى لا ينزل تحت cutoff مهما كانت معاملات الطلب (from/to/بدونهما)
+    const requestedFrom = query.from ? dayRangeUtc(query.from, timezone).start : null
+    const lowerBound = cutoff && (!requestedFrom || requestedFrom < cutoff) ? cutoff : requestedFrom
+    if (lowerBound || query.to) {
       where.startAt = {
-        ...(query.from ? { gte: dayRangeUtc(query.from, settings.timezone).start } : {}),
-        ...(query.to ? { lt: dayRangeUtc(query.to, settings.timezone).end } : {}),
+        ...(lowerBound ? { gte: lowerBound } : {}),
+        ...(query.to ? { lt: dayRangeUtc(query.to, timezone).end } : {}),
       }
     }
     if (query.search) {
@@ -147,39 +183,51 @@ export class BookingsService {
       }),
       this.prisma.booking.count({ where }),
     ])
-    return paginated(items, total, query)
+    return paginated(
+      items.map((b) => toBookingView(b, caps)),
+      total,
+      query,
+    )
   }
 
-  /** حجوزات انتهى وقتها وما زالت "قيد العمل" — تحتاج إكمالاً أو إلغاءً */
-  overdue() {
-    return this.prisma.booking.findMany({
-      where: { status: BookingStatus.ACTIVE, endAt: { lte: new Date() } },
+  /** حجوزات انتهى وقتها وما زالت "قيد العمل" — المشرف يرى حجوزات اليوم فقط */
+  async overdue(actor: AuthUser): Promise<BookingView[]> {
+    const { caps, cutoff } = await this.scopeOf(actor)
+    const items = await this.prisma.booking.findMany({
+      where: {
+        status: BookingStatus.ACTIVE,
+        endAt: { lte: new Date() },
+        ...(cutoff ? { startAt: { gte: cutoff } } : {}),
+      },
       orderBy: { startAt: 'asc' },
       take: 50,
       include: bookingInclude,
     })
+    return items.map((b) => toBookingView(b, caps))
   }
 
-  async findOne(id: string): Promise<BookingWithRelations> {
-    const booking = await this.prisma.booking.findUnique({ where: { id }, include: bookingInclude })
-    if (!booking) throw new NotFoundException('الحجز غير موجود')
-    return booking
+  async findOne(id: string, actor: AuthUser): Promise<BookingView> {
+    const scope = await this.scopeOf(actor)
+    return toBookingView(await this.loadVisible(id, scope), scope.caps)
   }
 
   // ───────────────────────── الكتابة ─────────────────────────
 
-  async create(dto: CreateBookingDto, actor: AuthUser): Promise<BookingWithRelations> {
-    const timezone = (await this.settings.get()).timezone
+  async create(dto: CreateBookingDto, actor: AuthUser): Promise<BookingView> {
+    const { caps, timezone, cutoff } = await this.scopeOf(actor)
+    if (dto.price !== undefined && !caps.finance) throw new ForbiddenException(MSG_NO_FINANCE)
+    const startAt = new Date(dto.startAt)
+    if (cutoff && startAt < cutoff) throw new ForbiddenException(MSG_NO_PAST_WRITE)
+
     const service = await this.prisma.service.findFirst({
       where: { id: dto.serviceId, archivedAt: null },
     })
     if (!service) throw new NotFoundException('الخدمة غير موجودة')
 
     const durationMinutes = dto.durationMinutes ?? service.durationMinutes
-    const startAt = new Date(dto.startAt)
     const endAt = addMinutes(startAt, durationMinutes)
 
-    return this.guardOverlap(() =>
+    const created = await this.guardOverlap(() =>
       this.prisma.$transaction(async (tx) => {
         await this.assertNoOverlap(tx, { start: startAt, end: endAt }, timezone)
         const customerId = await this.resolveCustomer(tx, dto)
@@ -199,11 +247,19 @@ export class BookingsService {
         })
       }),
     )
+    return toBookingView(created, caps)
   }
 
-  async update(id: string, dto: UpdateBookingDto): Promise<BookingWithRelations> {
-    const booking = await this.findOne(id)
-    const timezone = (await this.settings.get()).timezone
+  async update(id: string, dto: UpdateBookingDto, actor: AuthUser): Promise<BookingView> {
+    const scope = await this.scopeOf(actor)
+    const { caps, timezone, cutoff } = scope
+    if ((dto.price !== undefined || dto.paidAmount !== undefined) && !caps.finance) {
+      throw new ForbiddenException(MSG_NO_FINANCE)
+    }
+    if (cutoff && dto.startAt && new Date(dto.startAt) < cutoff) {
+      throw new ForbiddenException(MSG_NO_PAST_WRITE)
+    }
+    const booking = await this.loadVisible(id, scope)
     const changesSchedule =
       dto.serviceId !== undefined ||
       dto.startAt !== undefined ||
@@ -241,7 +297,7 @@ export class BookingsService {
       startAt.getTime() !== booking.startAt.getTime() || endAt.getTime() !== booking.endAt.getTime()
     if (timeChanged) Object.assign(data, { startAt, endAt, durationMinutes })
 
-    return this.guardOverlap(() =>
+    const updated = await this.guardOverlap(() =>
       this.prisma.$transaction(async (tx) => {
         if (timeChanged)
           await this.assertNoOverlap(tx, { start: startAt, end: endAt }, timezone, id)
@@ -251,31 +307,50 @@ export class BookingsService {
         return tx.booking.update({ where: { id }, data, include: bookingInclude })
       }),
     )
+    return toBookingView(updated, caps)
   }
 
-  async complete(id: string, dto: CompleteBookingDto): Promise<BookingWithRelations> {
-    const booking = await this.findOne(id)
+  /**
+   * إكمال الحجز. بلا مبلغ صريح يُسجَّل سعر الحجز تلقائياً (D11) — وهذا ما يفعله المشرف.
+   * المبلغ الصريح للمدير فقط.
+   */
+  async complete(id: string, dto: CompleteBookingDto, actor: AuthUser): Promise<BookingView> {
+    const scope = await this.scopeOf(actor)
+    if (dto.paidAmount !== undefined && !scope.caps.finance) {
+      throw new ForbiddenException(MSG_NO_FINANCE)
+    }
+    const booking = await this.loadVisible(id, scope)
     if (booking.status !== BookingStatus.ACTIVE) {
       throw new ConflictException('يمكن إكمال الحجوزات التي قيد العمل فقط')
     }
-    return this.prisma.booking.update({
-      where: { id },
-      data: {
-        status: BookingStatus.COMPLETED,
-        paidAmount: dto.paidAmount,
-        completedAt: new Date(),
+    const service = await this.prisma.service.findUnique({
+      where: { id: booking.serviceId },
+      select: { price: true },
+    })
+    const { paidAmount, price } = resolveCompletion(
+      {
+        bookingPrice: booking.price,
+        servicePrice: service?.price ?? null,
+        requested: dto.paidAmount,
       },
+      scope.caps,
+    )
+    const completed = await this.prisma.booking.update({
+      where: { id },
+      data: { status: BookingStatus.COMPLETED, paidAmount, price, completedAt: new Date() },
       include: bookingInclude,
     })
+    return toBookingView(completed, scope.caps)
   }
 
   /** الإلغاء يحرّر مكان الحجز في الجدول فوراً */
-  async cancel(id: string, dto: CancelBookingDto): Promise<BookingWithRelations> {
-    const booking = await this.findOne(id)
+  async cancel(id: string, dto: CancelBookingDto, actor: AuthUser): Promise<BookingView> {
+    const scope = await this.scopeOf(actor)
+    const booking = await this.loadVisible(id, scope)
     if (booking.status !== BookingStatus.ACTIVE) {
       throw new ConflictException('يمكن إلغاء الحجوزات التي قيد العمل فقط')
     }
-    return this.prisma.booking.update({
+    const cancelled = await this.prisma.booking.update({
       where: { id },
       data: {
         status: BookingStatus.CANCELLED,
@@ -284,20 +359,22 @@ export class BookingsService {
       },
       include: bookingInclude,
     })
+    return toBookingView(cancelled, scope.caps)
   }
 
   /** إعادة حجز مكتمل/ملغي إلى "قيد العمل" (لتصحيح الأخطاء) */
-  async reopen(id: string): Promise<BookingWithRelations> {
-    const booking = await this.findOne(id)
-    if (booking.status === BookingStatus.ACTIVE) return booking
-    const timezone = (await this.settings.get()).timezone
-    return this.guardOverlap(() =>
+  async reopen(id: string, actor: AuthUser): Promise<BookingView> {
+    const scope = await this.scopeOf(actor)
+    const booking = await this.loadVisible(id, scope)
+    if (booking.status === BookingStatus.ACTIVE) return toBookingView(booking, scope.caps)
+    assertCanReopen(booking, scope.caps)
+    const reopened = await this.guardOverlap(() =>
       this.prisma.$transaction(async (tx) => {
         if (booking.status === BookingStatus.CANCELLED) {
           await this.assertNoOverlap(
             tx,
             { start: booking.startAt, end: booking.endAt },
-            timezone,
+            scope.timezone,
             id,
           )
         }
@@ -314,10 +391,13 @@ export class BookingsService {
         })
       }),
     )
+    return toBookingView(reopened, scope.caps)
   }
 
+  /** الحذف النهائي (bookings.delete للمدير فقط) — لا نافذة زمنية هنا */
   async remove(id: string) {
-    await this.findOne(id)
+    const exists = await this.prisma.booking.count({ where: { id } })
+    if (!exists) throw new NotFoundException('الحجز غير موجود')
     await this.prisma.booking.delete({ where: { id } })
     return { success: true }
   }

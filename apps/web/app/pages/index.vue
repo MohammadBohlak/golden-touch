@@ -7,15 +7,18 @@ const route = useRoute()
 const router = useRouter()
 const { $api } = useNuxtApp()
 const { timezone, today } = useShopTime()
-const { can, isAdmin } = useAuth()
+const { can } = useAuth()
 const settings = useSettingsStore()
 const servicesStore = useServicesStore()
+// من لا يملك سجل الحجوزات لا يرى ما قبل اليوم
+const minDate = computed(() => (can('bookings.history') ? undefined : today.value))
 
 // التاريخ في الرابط (?date=) حتى يعمل الرجوع والمشاركة
 const date = computed({
   get: () => {
     const q = route.query.date
-    return typeof q === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(q) ? q : today.value
+    const value = typeof q === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(q) ? q : today.value
+    return clampDate(value, minDate.value)
   },
   set: (value: string) => {
     router.replace({ query: value === today.value ? {} : { ...route.query, date: value } })
@@ -82,7 +85,10 @@ const subline = computed(() =>
   headline.value === formatDateLong(date.value) ? '' : formatDateLong(date.value),
 )
 const summary = computed(() => day.data.value?.summary)
-const unpriced = computed(() => (isAdmin.value ? servicesStore.unpriced : []))
+// تحديد الأسعار شأن من يرى المال ويدير الخدمات
+const unpriced = computed(() =>
+  can('finance.read') && can('services.update') ? servicesStore.unpriced : [],
+)
 </script>
 
 <template>
@@ -127,7 +133,12 @@ const unpriced = computed(() => (isAdmin.value ? servicesStore.unpriced : []))
       </NuxtLink>
     </ExpandTransition>
 
-    <DateStrip v-model="date" :today="today" :days-off="settings.settings?.daysOff" />
+    <DateStrip
+      v-model="date"
+      :today="today"
+      :days-off="settings.settings?.daysOff"
+      :min="minDate"
+    />
 
     <OverdueBanner :bookings="overdue.data.value ?? []" :timezone="timezone" @open="openBooking" />
 
@@ -135,7 +146,13 @@ const unpriced = computed(() => (isAdmin.value ? servicesStore.unpriced : []))
     <ExpandTransition>
       <dl
         v-if="summary"
-        :class="cn('grid grid-cols-4 gap-2 transition-opacity', switching && 'opacity-70')"
+        :class="
+          cn(
+            'grid gap-2 transition-opacity',
+            summary.revenue !== undefined ? 'grid-cols-4' : 'grid-cols-3',
+            switching && 'opacity-70',
+          )
+        "
       >
         <div class="rounded-2xl bg-surface p-2.5 text-center shadow-card">
           <dt class="text-[11px] font-semibold text-fg-muted">الحجوزات</dt>
@@ -155,7 +172,10 @@ const unpriced = computed(() => (isAdmin.value ? servicesStore.unpriced : []))
             <AnimatedNumber :value="summary.completed" appear />
           </dd>
         </div>
-        <div class="rounded-2xl bg-ink-950 p-2.5 text-center text-white shadow-card">
+        <div
+          v-if="summary.revenue !== undefined"
+          class="rounded-2xl bg-ink-950 p-2.5 text-center text-white shadow-card"
+        >
           <dt class="text-[11px] font-semibold text-ink-300">الدخل</dt>
           <dd class="text-base leading-7 font-extrabold text-gold-300 tabular-nums">
             <AnimatedNumber :value="summary.revenue" :format="formatMoneyCompact" appear />

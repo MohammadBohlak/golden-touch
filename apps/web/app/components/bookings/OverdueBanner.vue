@@ -4,6 +4,7 @@ import type { Booking } from '~/types/api'
 /** تنبيه بالحجوزات التي انتهى وقتها وما زالت "قيد العمل" — تحتاج إكمالاً أو إلغاءً */
 defineProps<{ bookings: Booking[]; timezone: string }>()
 defineEmits<{ open: [booking: Booking] }>()
+const { can } = useAuth()
 
 /** عدد الصفوف الظاهرة قبل «عرض الكل» */
 const PREVIEW = 2
@@ -31,7 +32,13 @@ const listId = useId()
                 : `${bookings.length} حجوزات انتهى وقتها ولم تُغلق`
             }}
           </h2>
-          <p class="text-sm text-amber-900">سجّل الدفع أو ألغِ الحجز حتى تبقى الإحصائيات دقيقة.</p>
+          <p class="text-sm text-amber-900">
+            {{
+              can('finance.read')
+                ? 'سجّل الدفع أو ألغِ الحجز حتى تبقى الإحصائيات دقيقة.'
+                : 'أكّد الحجز أو ألغِه حتى يبقى الجدول دقيقاً.'
+            }}
+          </p>
         </div>
       </div>
       <!-- كل صف داخل Collapse: الصفوف بعد المعاينة تنفتح وتنطوي بسلاسة. الفاصل pb-2 داخل المحتوى -->

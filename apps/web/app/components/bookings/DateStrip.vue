@@ -3,7 +3,8 @@
  * شريط أسبوع (سبت → جمعة) لاختيار اليوم: 7 أيام بعرض متساوٍ بلا تمرير أفقي،
  * مع أسهم للأسبوع السابق/التالي، زر "اليوم"، ومنتقي تاريخ أصلي للقفز لأي تاريخ.
  */
-const props = defineProps<{ today: string; daysOff?: number[] }>()
+/** `min`: أول يوم يُسمح باختياره (لمن لا يرى السجل السابق)؛ ما قبله معطّل */
+const props = defineProps<{ today: string; daysOff?: number[]; min?: string }>()
 const model = defineModel<string>({ required: true })
 
 const anchor = ref(startOfWeek(model.value))
@@ -31,6 +32,7 @@ const days = computed(() =>
       isToday: date === props.today,
       isOff: props.daysOff?.includes(weekdayOf(date)) ?? false,
       isPast: date < props.today,
+      beforeMin: props.min ? date < props.min : false,
     }
   }),
 )
@@ -60,6 +62,7 @@ function onPick(event: Event) {
         size="icon-sm"
         icon="chevron-left"
         aria-label="الأسبوع السابق"
+        :disabled="!hasSelectableBefore(anchor, min)"
         @click="anchor = addDays(anchor, -7)"
       />
       <div class="flex-1 text-center text-sm font-bold" aria-live="polite">
@@ -91,6 +94,7 @@ function onPick(event: Event) {
           ref="picker"
           type="date"
           :value="model"
+          :min="min"
           tabindex="-1"
           aria-hidden="true"
           class="pointer-events-none absolute inset-0 opacity-0"
@@ -126,6 +130,7 @@ function onPick(event: Event) {
             type="button"
             role="option"
             :aria-selected="d.date === model"
+            :disabled="d.beforeMin"
             :aria-label="`${formatDateLong(d.date)}${d.isToday ? ' — اليوم' : ''}${d.isOff ? ' — عطلة' : ''}`"
             :class="
               cn(
@@ -136,6 +141,7 @@ function onPick(event: Event) {
                     ? 'bg-gold-50 text-fg ring-1 ring-gold-300 ring-inset'
                     : 'text-fg hover:bg-surface-muted',
                 d.isPast && d.date !== model && 'text-fg-subtle',
+                d.beforeMin && 'cursor-not-allowed opacity-50 hover:bg-transparent',
               )
             "
             @click="model = d.date"

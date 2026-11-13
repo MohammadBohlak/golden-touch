@@ -39,7 +39,10 @@ function lastVisitLabel(value: string | null) {
 
 <template>
   <div class="flex flex-col gap-4">
-    <PageHeader title="الزبائن" subtitle="سجل الزبائن وعدد زياراتهم">
+    <PageHeader
+      title="الزبائن"
+      :subtitle="can('bookings.history') ? 'سجل الزبائن وعدد زياراتهم' : 'سجل الزبائن'"
+    >
       <template #actions>
         <AppButton v-if="can('customers.create')" icon="user-plus" @click="dialogOpen = true">
           <span class="hidden sm:inline">زبون جديد</span>
@@ -87,11 +90,16 @@ function lastVisitLabel(value: string | null) {
               <span class="block text-sm text-fg-muted tabular-nums" dir="ltr">{{
                 customer.phone ?? '—'
               }}</span>
-              <span class="block text-xs text-fg-subtle">{{
-                lastVisitLabel(customer.lastVisitAt)
-              }}</span>
+              <span
+                v-if="customer.lastVisitAt !== undefined"
+                class="block text-xs text-fg-subtle"
+                >{{ lastVisitLabel(customer.lastVisitAt) }}</span
+              >
             </span>
-            <span class="flex flex-col items-center rounded-xl bg-gold-50 px-3 py-1.5">
+            <span
+              v-if="customer.visits !== undefined"
+              class="flex flex-col items-center rounded-xl bg-gold-50 px-3 py-1.5"
+            >
               <span class="text-lg leading-tight font-extrabold text-gold-800 tabular-nums">{{
                 customer.visits
               }}</span>

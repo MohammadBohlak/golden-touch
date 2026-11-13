@@ -57,7 +57,8 @@ export interface ShopSettings {
 export interface Service {
   id: string
   name: string
-  price: number
+  /** غائب عمّن لا يملك finance.read */
+  price?: number
   durationMinutes: number
   isActive: boolean
   sortOrder: number
@@ -73,8 +74,9 @@ export interface CustomerRef {
 export interface Customer extends CustomerRef {
   notes: string | null
   createdAt: string
-  visits: number
-  lastVisitAt: string | null
+  /** غائبان عمّن لا يملك bookings.history */
+  visits?: number
+  lastVisitAt?: string | null
 }
 
 export type BookingStatus = 'ACTIVE' | 'COMPLETED' | 'CANCELLED'
@@ -84,12 +86,14 @@ export interface Booking {
   customerId: string
   serviceId: string
   serviceName: string
-  price: number
+  /** غائب عمّن لا يملك finance.read */
+  price?: number
   durationMinutes: number
   startAt: string
   endAt: string
   status: BookingStatus
-  paidAmount: number | null
+  /** غائب عمّن لا يملك finance.read */
+  paidAmount?: number | null
   notes: string | null
   cancelReason: string | null
   completedAt: string | null
@@ -103,11 +107,13 @@ export interface CustomerDetails extends CustomerRef {
   notes: string | null
   createdAt: string
   stats: {
-    visits: number
-    totalSpent: number
-    lastVisitAt: string | null
-    cancelled: number
     upcoming: number
+    /** bookings.history */
+    visits?: number
+    lastVisitAt?: string | null
+    cancelled?: number
+    /** finance.read */
+    totalSpent?: number
   }
   bookings: Booking[]
 }
@@ -136,8 +142,9 @@ export interface DaySchedule {
     active: number
     completed: number
     cancelled: number
-    revenue: number
-    expected: number
+    /** finance.read */
+    revenue?: number
+    expected?: number
   }
 }
 

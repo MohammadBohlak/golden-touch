@@ -5,26 +5,32 @@ import {
   PaginatedResponse,
   PaginationQueryDto,
 } from '../../common/dto/pagination-query.dto'
+import type { AuthUser } from '../../common/types/auth-user'
 import { normalizePhone } from '../../common/utils/phone'
 import { PrismaService } from '../../prisma/prisma.service'
 import { bookingInclude } from '../bookings/booking.mapper'
+import { capsOf, historyCutoff, toBookingView } from '../bookings/booking.visibility'
+import { SettingsService } from '../settings/settings.service'
+import {
+  buildCustomerStats,
+  CustomerListItem,
+  needsCompletedAggregate,
+} from './customer.visibility'
 import { CreateCustomerDto, UpdateCustomerDto } from './dto/customer.dto'
-
-export interface CustomerListItem {
-  id: string
-  name: string
-  phone: string | null
-  notes: string | null
-  createdAt: Date
-  visits: number
-  lastVisitAt: Date | null
-}
 
 @Injectable()
 export class CustomersService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly settings: SettingsService,
+  ) {}
 
-  async findAll(query: PaginationQueryDto): Promise<PaginatedResponse<CustomerListItem>> {
+  /** الزيارات وآخر زيارة مشتقة من الحجوزات المكتملة (سجل سابق) → لمن يملك bookings.history فقط */
+  async findAll(
+    query: PaginationQueryDto,
+    actor: AuthUser,
+  ): Promise<PaginatedResponse<CustomerListItem>> {
+    const { history } = capsOf(actor)
     const search = query.search
     const phone = normalizePhone(search)
     const where: Prisma.CustomerWhereInput = search
@@ -49,6 +55,15 @@ export class CustomersService {
       this.prisma.customer.count({ where }),
     ])
 
+    const basic = ({ id, name, phone, notes, createdAt }: (typeof customers)[number]) => ({
+      id,
+      name,
+      phone,
+      notes,
+      createdAt,
+    })
+    if (!history) return paginated(customers.map(basic), total, query)
+
     const lastVisits = customers.length
       ? await this.prisma.booking.groupBy({
           by: ['customerId'],
@@ -61,32 +76,45 @@ export class CustomersService {
       : []
     const lastByCustomer = new Map(lastVisits.map((v) => [v.customerId, v._max.startAt]))
 
-    const items = customers.map(({ _count, ...customer }) => ({
-      ...customer,
-      visits: _count.bookings,
+    const items = customers.map((customer) => ({
+      ...basic(customer),
+      visits: customer._count.bookings,
       lastVisitAt: lastByCustomer.get(customer.id) ?? null,
     }))
     return paginated(items, total, query)
   }
 
-  async findOne(id: string) {
+  /**
+   * ملف الزبون. من لا يملك bookings.history لا يرى إلا الحجوزات من بداية اليوم فصاعداً
+   * ولا زيارات ولا ملغاة؛ ومن لا يملك finance.read لا يستلم مجموع المدفوع ولا أسعار الحجوزات.
+   */
+  async findOne(id: string, actor: AuthUser) {
+    const caps = capsOf(actor)
+    const { timezone } = await this.settings.get()
+    const cutoff = caps.history ? null : historyCutoff(new Date(), timezone)
+
     const customer = await this.prisma.customer.findUnique({ where: { id } })
     if (!customer) throw new NotFoundException('الزبون غير موجود')
 
     const [completed, cancelled, upcoming, recent] = await Promise.all([
-      this.prisma.booking.aggregate({
-        where: { customerId: id, status: BookingStatus.COMPLETED },
-        _count: true,
-        _sum: { paidAmount: true },
-        _max: { startAt: true },
-      }),
-      this.prisma.booking.count({ where: { customerId: id, status: BookingStatus.CANCELLED } }),
+      needsCompletedAggregate(caps)
+        ? this.prisma.booking.aggregate({
+            where: { customerId: id, status: BookingStatus.COMPLETED },
+            _count: true,
+            _sum: { paidAmount: true },
+            _max: { startAt: true },
+          })
+        : null,
+      caps.history
+        ? this.prisma.booking.count({ where: { customerId: id, status: BookingStatus.CANCELLED } })
+        : 0,
       this.prisma.booking.count({
         where: { customerId: id, status: BookingStatus.ACTIVE, startAt: { gte: new Date() } },
       }),
       this.prisma.booking.findMany({
-        where: { customerId: id },
-        orderBy: { startAt: 'desc' },
+        where: { customerId: id, ...(cutoff ? { startAt: { gte: cutoff } } : {}) },
+        // السجل: الأحدث أولاً. من يرى القادم فقط: الأقرب موعداً أولاً
+        orderBy: { startAt: cutoff ? 'asc' : 'desc' },
         take: 30,
         include: bookingInclude,
       }),
@@ -94,14 +122,17 @@ export class CustomersService {
 
     return {
       ...customer,
-      stats: {
-        visits: completed._count,
-        totalSpent: completed._sum.paidAmount ?? 0,
-        lastVisitAt: completed._max.startAt,
-        cancelled,
-        upcoming,
-      },
-      bookings: recent,
+      stats: buildCustomerStats(
+        {
+          upcoming,
+          completed: completed?._count ?? 0,
+          totalSpent: completed?._sum.paidAmount ?? 0,
+          lastVisitAt: completed?._max.startAt ?? null,
+          cancelled,
+        },
+        caps,
+      ),
+      bookings: recent.map((b) => toBookingView(b, caps)),
     }
   }
 

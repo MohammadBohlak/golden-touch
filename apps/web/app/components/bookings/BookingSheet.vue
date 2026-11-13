@@ -4,6 +4,8 @@ import type { Booking } from '~/types/api'
 /**
  * ورقة تفاصيل الحجز مع كل الإجراءات في مكان واحد:
  * إكمال وتسجيل المبلغ المدفوع (افتراضياً سعر الخدمة)، إلغاء بسبب سريع، تعديل، اتصال، تذكير واتساب.
+ * من لا يملك finance.read («المشرف»): لا سعر ولا مبلغ في أي مكان، وزر «تأكيد الحجز» يُكمل بنقرة
+ * واحدة (الخادم يسجّل سعر الحجز تلقائياً) مع «تراجع» في الإشعار.
  */
 const props = defineProps<{ booking: Booking | null; timezone: string }>()
 const open = defineModel<boolean>('open', { default: false })
@@ -49,6 +51,15 @@ function startComplete() {
   paid.value = b.value?.price ?? 0
   error.value = ''
   mode.value = 'complete'
+}
+
+/** تأكيد بلا مبلغ: الخادم يُسجّل سعر الحجز تلقائياً، ولا يظهر المبلغ للمشرف */
+function submitConfirm() {
+  if (!b.value) return
+  const id = b.value.id
+  void run(() => $api<Booking>(`/bookings/${id}/complete`, { method: 'POST' }), 'تم تأكيد الحجز', {
+    undo: () => reopen(id),
+  })
 }
 
 function startEditPaid() {
@@ -142,7 +153,9 @@ async function submitReopen() {
     title: 'إعادة الحجز إلى "قيد العمل"؟',
     message:
       b.value.status === 'COMPLETED'
-        ? 'سيُحذف المبلغ المدفوع المسجّل لهذا الحجز.'
+        ? can('finance.read')
+          ? 'سيُحذف المبلغ المدفوع المسجّل لهذا الحجز.'
+          : 'سيعود الحجز إلى قيد العمل.'
         : 'سيُحجز وقته من جديد إن كان ما زال متاحاً.',
     confirmLabel: 'إعادة فتح',
   })
@@ -214,11 +227,11 @@ async function remove() {
                   <dd class="text-sm text-fg-muted">{{ formatDuration(b.durationMinutes) }}</dd>
                 </div>
               </div>
-              <div class="rounded-2xl border border-line p-3">
+              <div v-if="b.price !== undefined" class="rounded-2xl border border-line p-3">
                 <dt class="text-xs font-semibold text-fg-muted">السعر المتفق عليه</dt>
                 <dd class="mt-0.5 font-bold tabular-nums">{{ formatMoney(b.price) }}</dd>
               </div>
-              <div class="rounded-2xl border border-line p-3">
+              <div v-if="b.price !== undefined" class="rounded-2xl border border-line p-3">
                 <dt class="text-xs font-semibold text-fg-muted">المدفوع</dt>
                 <dd
                   :class="
@@ -302,7 +315,7 @@ async function remove() {
               <button
                 type="button"
                 class="h-9 rounded-full border border-line-strong px-3 text-sm font-semibold tabular-nums hover:border-gold-500"
-                @click="paid = b.price"
+                @click="paid = b.price ?? 0"
               >
                 {{ formatMoney(b.price) }}
               </button>
@@ -367,12 +380,21 @@ async function remove() {
             تعديل الموعد
           </AppButton>
           <AppButton
-            v-if="can('bookings.complete')"
+            v-if="can('bookings.complete') && can('finance.read')"
             variant="gold"
             icon="check"
             @click="startComplete"
           >
             إكمال وتسجيل الدفع
+          </AppButton>
+          <AppButton
+            v-else-if="can('bookings.complete')"
+            variant="gold"
+            icon="check"
+            :loading="busy"
+            @click="submitConfirm"
+          >
+            تأكيد الحجز
           </AppButton>
         </template>
         <template v-else>
@@ -396,7 +418,7 @@ async function remove() {
             إعادة فتح
           </AppButton>
           <AppButton
-            v-if="b.status === 'COMPLETED' && can('bookings.update')"
+            v-if="b.status === 'COMPLETED' && can('bookings.update') && can('finance.read')"
             variant="primary"
             icon="wallet"
             @click="startEditPaid"

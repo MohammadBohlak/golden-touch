@@ -87,6 +87,7 @@ const amount = computed(() =>
         <template v-if="!showDate"> · حتى {{ formatTime(booking.endAt, timezone) }}</template>
       </p>
       <p
+        v-if="amount != null"
         class="text-sm font-bold tabular-nums transition-colors"
         :class="booking.status === 'COMPLETED' ? 'text-success' : 'text-brand-ink'"
       >

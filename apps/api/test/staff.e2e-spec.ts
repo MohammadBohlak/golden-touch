@@ -1,0 +1,630 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
+/**
+ * e2e لمشرف الحجوزات عبر طبقة HTTP الكاملة (JwtAuthGuard + PermissionsGuard + الفلاتر + الخدمات الحقيقية)
+ * مع Prisma وهمي في الذاكرة — **لا يلمس أي قاعدة بيانات**.
+ * (docs/STAFF_RESTRICTIONS_PLAN.md — المرحلة 6)
+ *
+ * عزل الإنتاج: نُغيّر DATABASE_URL/DIRECT_URL إلى عنوان ميت قبل استيراد التطبيق، فلو تسرّب PrismaClient
+ * حقيقي لفشل الاتصال بدل أن يمسّ البيانات الفعلية. كذلك يُوجَّه keep-alive إلى منفذ ميت.
+ */
+process.env.DATABASE_URL = 'postgresql://e2e:e2e@127.0.0.1:1/e2e'
+process.env.DIRECT_URL = 'postgresql://e2e:e2e@127.0.0.1:1/e2e'
+process.env.KEEP_ALIVE_URL = 'http://127.0.0.1:9'
+process.env.JWT_SECRET = 'e2e-secret-e2e-secret-e2e-secret-e2e-secret'
+process.env.NODE_ENV = 'test'
+
+import { randomUUID } from 'node:crypto'
+import { INestApplication } from '@nestjs/common'
+import { Test } from '@nestjs/testing'
+import bcrypt from 'bcrypt'
+import request from 'supertest'
+import { PERMISSIONS, STAFF_PERMISSIONS } from '../prisma/permissions'
+import { AppModule } from '../src/app.module'
+import { addDays, toDateString } from '../src/common/utils/time'
+import { PrismaService } from '../src/prisma/prisma.service'
+import { historyCutoff } from '../src/modules/bookings/booking.visibility'
+import { setupApp } from '../src/setup-app'
+
+const TZ = 'Asia/Damascus'
+const PASSWORD = 'e2e-password-1'
+const HOUR = 3_600_000
+
+// ───────────────────────── بيانات وهمية (نسبية لـ «الآن») ─────────────────────────
+
+const ID = {
+  adminUser: randomUUID(),
+  staffUser: randomUUID(),
+  s1: randomUUID(),
+  s2: randomUUID(),
+  c1: randomUUID(),
+  past: randomUUID(),
+  pastActive: randomUUID(),
+  today: randomUUID(),
+  todayDone: randomUUID(),
+  future: randomUUID(),
+}
+
+const cutoff = historyCutoff(new Date(), TZ) // بداية اليوم بتوقيت دمشق
+const at = (hours: number) => new Date(cutoff.getTime() + hours * HOUR)
+const today = toDateString(new Date(), TZ)
+const yesterday = addDays(today, -1)
+
+const passwordHash = bcrypt.hashSync(PASSWORD, 4)
+const user = (id: string, email: string, roleName: string, keys: string[]) => ({
+  id,
+  name: roleName,
+  email,
+  phone: null,
+  passwordHash,
+  isActive: true,
+  roleId: 1,
+  role: { id: 1, name: roleName, label: roleName, permissions: keys.map((key) => ({ key })) },
+})
+
+function booking(over: Record<string, unknown>) {
+  const startAt = over.startAt as Date
+  return {
+    customerId: ID.c1,
+    serviceId: ID.s1,
+    serviceName: 'شعر',
+    price: 25000,
+    paidAmount: null,
+    durationMinutes: 30,
+    endAt: new Date(startAt.getTime() + 0.5 * HOUR),
+    status: 'ACTIVE',
+    notes: null,
+    cancelReason: null,
+    completedAt: null,
+    cancelledAt: null,
+    createdById: null,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+    ...over,
+  }
+}
+
+function freshDb() {
+  return {
+    users: [
+      user(
+        ID.adminUser,
+        'admin@e2e.test',
+        'admin',
+        PERMISSIONS.map(([key]) => key),
+      ),
+      user(ID.staffUser, 'staff@e2e.test', 'staff', STAFF_PERMISSIONS),
+    ],
+    settings: {
+      id: 1,
+      shopName: 'Golden Touch',
+      openTime: '10:00',
+      closeTime: '22:00',
+      slotMinutes: 15,
+      timezone: TZ,
+      daysOff: [] as number[],
+      updatedAt: new Date(),
+    },
+    services: [
+      {
+        id: ID.s1,
+        name: 'شعر',
+        price: 25000,
+        durationMinutes: 30,
+        isActive: true,
+        sortOrder: 1,
+        archivedAt: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+      {
+        id: ID.s2,
+        name: 'ذقن',
+        price: 15000,
+        durationMinutes: 20,
+        isActive: true,
+        sortOrder: 2,
+        archivedAt: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+    ] as any[],
+    customers: [
+      {
+        id: ID.c1,
+        name: 'زبون تجريبي',
+        phone: '0991234567',
+        notes: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+    ] as any[],
+    bookings: [
+      // أمس: مكتمل (25000) + قيد العمل لم يُغلق
+      booking({
+        id: ID.past,
+        startAt: at(-20),
+        status: 'COMPLETED',
+        paidAmount: 25000,
+        completedAt: at(-19),
+      }),
+      booking({ id: ID.pastActive, startAt: at(-18), price: 7000 }),
+      // اليوم: قيد العمل بسعر خصّصه المدير (18000) + مكتمل
+      booking({ id: ID.today, startAt: at(10), price: 18000 }),
+      booking({
+        id: ID.todayDone,
+        startAt: at(12),
+        status: 'COMPLETED',
+        paidAmount: 25000,
+        completedAt: at(12.5),
+      }),
+      // غداً
+      booking({ id: ID.future, startAt: at(34) }),
+    ] as any[],
+  }
+}
+
+let db = freshDb()
+
+// ───────────────────────── Prisma وهمي بالحد الأدنى المستعمل ─────────────────────────
+
+const same = (a: unknown, b: unknown) =>
+  a instanceof Date && b instanceof Date ? a.getTime() === b.getTime() : a === b
+const num = (v: unknown) => (v instanceof Date ? v.getTime() : (v as number))
+
+function matchValue(value: unknown, cond: unknown): boolean {
+  if (cond === null || typeof cond !== 'object' || cond instanceof Date) return same(value, cond)
+  return Object.entries(cond as Record<string, unknown>).every(([op, arg]) => {
+    switch (op) {
+      case 'gte':
+        return num(value) >= num(arg)
+      case 'gt':
+        return num(value) > num(arg)
+      case 'lte':
+        return num(value) <= num(arg)
+      case 'lt':
+        return num(value) < num(arg)
+      case 'in':
+        return (arg as unknown[]).includes(value)
+      case 'not':
+        return !same(value, arg)
+      default:
+        throw new Error(`fake prisma: عامل غير مدعوم ${op}`)
+    }
+  })
+}
+
+function matches(row: any, where: Record<string, unknown> = {}): boolean {
+  return Object.entries(where).every(([key, cond]) => {
+    if (key === 'OR' || key === 'AND') throw new Error('fake prisma: OR/AND غير مدعومين')
+    return matchValue(row[key], cond)
+  })
+}
+
+function page<T extends Record<string, any>>(rows: T[], args: any = {}): T[] {
+  let out = [...rows]
+  const orderBy = Array.isArray(args.orderBy) ? args.orderBy[0] : args.orderBy
+  if (orderBy) {
+    const [field, dir] = Object.entries(orderBy)[0] as [string, 'asc' | 'desc']
+    out.sort((a, b) => (num(a[field]) - num(b[field])) * (dir === 'desc' ? -1 : 1))
+  }
+  if (args.skip) out = out.slice(args.skip)
+  if (args.take) out = out.slice(0, args.take)
+  return out
+}
+
+const withRelations = (b: any) => ({
+  ...b,
+  customer: db.customers.find((c) => c.id === b.customerId)
+    ? {
+        id: b.customerId,
+        name: db.customers.find((c) => c.id === b.customerId).name,
+        phone: db.customers.find((c) => c.id === b.customerId).phone,
+      }
+    : null,
+  createdBy: null,
+})
+
+const fakePrisma: any = {
+  user: {
+    findUnique: async ({ where }: any) =>
+      db.users.find((u) => (where.id ? u.id === where.id : u.email === where.email)) ?? null,
+    update: async () => ({}),
+  },
+  shopSettings: {
+    findUnique: async () => db.settings,
+    create: async () => db.settings,
+  },
+  service: {
+    findMany: async (args: any) =>
+      page(
+        db.services.filter((s) => matches(s, args.where)),
+        args,
+      ),
+    findFirst: async ({ where }: any) => db.services.find((s) => matches(s, where)) ?? null,
+    findUnique: async ({ where }: any) => db.services.find((s) => s.id === where.id) ?? null,
+    aggregate: async () => ({ _max: { sortOrder: 2 } }),
+    count: async () => 0,
+    create: async ({ data }: any) => {
+      const row = {
+        id: randomUUID(),
+        isActive: true,
+        archivedAt: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        ...data,
+      }
+      db.services.push(row)
+      return row
+    },
+    update: async ({ where, data }: any) =>
+      Object.assign(
+        db.services.find((s) => s.id === where.id),
+        data,
+      ),
+  },
+  customer: {
+    findUnique: async ({ where }: any) =>
+      db.customers.find((c) => (where.id ? c.id === where.id : c.phone === where.phone)) ?? null,
+    findMany: async (args: any) =>
+      page(db.customers, args).map((c) => ({
+        ...c,
+        _count: {
+          bookings: db.bookings.filter((b) => b.customerId === c.id && b.status === 'COMPLETED')
+            .length,
+        },
+      })),
+    count: async () => db.customers.length,
+    create: async ({ data }: any) => {
+      const row = {
+        id: randomUUID(),
+        notes: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        ...data,
+      }
+      db.customers.push(row)
+      return row
+    },
+  },
+  booking: {
+    findMany: async (args: any) =>
+      page(
+        db.bookings.filter((b) => matches(b, args.where)),
+        args,
+      ).map(withRelations),
+    findFirst: async (args: any) => {
+      const row = db.bookings.find((b) => matches(b, args.where))
+      return row ? withRelations(row) : null
+    },
+    findUnique: async ({ where }: any) => {
+      const row = db.bookings.find((b) => b.id === where.id)
+      return row ? withRelations(row) : null
+    },
+    count: async ({ where }: any = {}) => db.bookings.filter((b) => matches(b, where)).length,
+    aggregate: async ({ where }: any) => {
+      const rows = db.bookings.filter((b) => matches(b, where))
+      return {
+        _count: rows.length,
+        _sum: { paidAmount: rows.reduce((s, b) => s + (b.paidAmount ?? 0), 0) },
+        _max: {
+          startAt: rows.length ? new Date(Math.max(...rows.map((b) => b.startAt.getTime()))) : null,
+        },
+      }
+    },
+    groupBy: async ({ where }: any) => {
+      const rows = db.bookings.filter(
+        (b) => b.status === where.status && where.customerId.in.includes(b.customerId),
+      )
+      return [...new Set(rows.map((b) => b.customerId))].map((customerId) => ({
+        customerId,
+        _max: {
+          startAt: new Date(
+            Math.max(
+              ...rows.filter((b) => b.customerId === customerId).map((b) => b.startAt.getTime()),
+            ),
+          ),
+        },
+      }))
+    },
+    create: async ({ data }: any) => {
+      const row = booking({ id: randomUUID(), status: 'ACTIVE', ...data })
+      db.bookings.push(row)
+      return withRelations(row)
+    },
+    update: async ({ where, data }: any) =>
+      withRelations(
+        Object.assign(
+          db.bookings.find((b) => b.id === where.id),
+          data,
+        ),
+      ),
+    delete: async ({ where }: any) => {
+      db.bookings = db.bookings.filter((b) => b.id !== where.id)
+    },
+  },
+  $transaction: async (arg: any) => (Array.isArray(arg) ? Promise.all(arg) : arg(fakePrisma)),
+}
+
+// ───────────────────────── الاختبار ─────────────────────────
+
+/** لا مال ولا إحصائيات مالية في أي مكان من الاستجابة */
+function expectNoMoney(body: unknown) {
+  const json = JSON.stringify(body)
+  for (const key of ['price', 'paidAmount', 'revenue', 'expected', 'totalSpent']) {
+    expect(json).not.toContain(`"${key}"`)
+  }
+}
+
+describe('مشرف الحجوزات مقابل المدير (e2e بلا قاعدة بيانات)', () => {
+  let app: INestApplication
+  let staff: ReturnType<typeof request.agent>
+  let admin: ReturnType<typeof request.agent>
+
+  beforeAll(async () => {
+    const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
+      .overrideProvider(PrismaService)
+      .useValue(fakePrisma)
+      .compile()
+    app = moduleRef.createNestApplication()
+    setupApp(app)
+    await app.init()
+
+    staff = request.agent(app.getHttpServer())
+    admin = request.agent(app.getHttpServer())
+    await staff
+      .post('/api/auth/login')
+      .send({ email: 'staff@e2e.test', password: PASSWORD })
+      .expect(200)
+    await admin
+      .post('/api/auth/login')
+      .send({ email: 'admin@e2e.test', password: PASSWORD })
+      .expect(200)
+  })
+
+  afterAll(async () => {
+    await app?.close()
+  })
+
+  beforeEach(() => {
+    db = freshDb()
+  })
+
+  describe('الصلاحيات (403)', () => {
+    it('me: لا stats.read ولا finance.read ولا bookings.history', async () => {
+      const me = await staff.get('/api/auth/me').expect(200)
+      for (const p of [
+        'stats.read',
+        'finance.read',
+        'bookings.history',
+        'bookings.delete',
+        'services.update',
+        'users.read',
+      ]) {
+        expect(me.body.permissions).not.toContain(p)
+      }
+      expect(me.body.permissions).toContain('bookings.complete')
+    })
+
+    it.each([
+      ['get', '/api/stats'],
+      ['get', '/api/users'],
+      ['get', '/api/roles'],
+      ['patch', '/api/settings'],
+      ['post', '/api/services'],
+    ])('%s %s → 403 بالعربية', async (method, url) => {
+      const res = await (staff as any)[method](url).send({}).expect(403)
+      expect(res.body).toEqual({ statusCode: 403, message: 'ليس لديك صلاحية للقيام بهذا الإجراء' })
+    })
+
+    it('الحذف النهائي للحجز والزبون ممنوع', async () => {
+      await staff.delete(`/api/bookings/${ID.today}`).expect(403)
+      await staff.delete(`/api/customers/${ID.c1}`).expect(403)
+      expect(db.bookings.some((b) => b.id === ID.today)).toBe(true)
+    })
+  })
+
+  describe('الخدمات', () => {
+    it('المشرف: الاسم والمدة بلا سعر', async () => {
+      const res = await staff.get('/api/services?includeInactive=true').expect(200)
+      expect(res.body.map((s: any) => s.name)).toEqual(['شعر', 'ذقن'])
+      expect(res.body[0].durationMinutes).toBe(30)
+      expectNoMoney(res.body)
+    })
+
+    it('المدير: مع السعر', async () => {
+      const res = await admin.get('/api/services').expect(200)
+      expect(res.body[0].price).toBe(25000)
+    })
+  })
+
+  describe('الحجوزات: الماضي', () => {
+    it('يوم سابق → 403، واليوم → 200 بلا مال', async () => {
+      const denied = await staff.get(`/api/bookings/day?date=${yesterday}`).expect(403)
+      expect(denied.body.message).toBe('ليس لديك صلاحية لعرض الحجوزات السابقة')
+
+      const res = await staff.get(`/api/bookings/day?date=${today}`).expect(200)
+      expect(res.body.bookings.map((b: any) => b.id).sort()).toEqual(
+        [ID.today, ID.todayDone].sort(),
+      )
+      expect(res.body.summary).toEqual({ total: 2, active: 1, completed: 1, cancelled: 0 })
+      expectNoMoney(res.body)
+    })
+
+    it('القائمة: لا شيء قبل اليوم مهما كانت الفلاتر', async () => {
+      for (const qs of [
+        '',
+        '?from=2020-01-01',
+        '?from=2020-01-01&to=2030-01-01',
+        `?customerId=${ID.c1}&to=${yesterday}`,
+        '?status=COMPLETED&order=desc',
+      ]) {
+        const res = await staff.get(`/api/bookings${qs}`).expect(200)
+        const ids = res.body.items.map((b: any) => b.id)
+        expect(ids).not.toContain(ID.past)
+        expect(ids).not.toContain(ID.pastActive)
+        expectNoMoney(res.body)
+      }
+      const all = await staff.get('/api/bookings?from=2020-01-01').expect(200)
+      expect(all.body.items.map((b: any) => b.id).sort()).toEqual(
+        [ID.today, ID.todayDone, ID.future].sort(),
+      )
+    })
+
+    it('حجز سابق بالمعرّف → 404 (لا يكشف وجوده)، وحجز اليوم → 200', async () => {
+      await staff.get(`/api/bookings/${ID.past}`).expect(404)
+      const res = await staff.get(`/api/bookings/${ID.today}`).expect(200)
+      expectNoMoney(res.body)
+    })
+
+    it('المنتهية: المشرف لا يرى منتهيات الأمس، والمدير يراها', async () => {
+      const s = await staff.get('/api/bookings/overdue').expect(200)
+      expect(s.body.map((b: any) => b.id)).not.toContain(ID.pastActive)
+      expectNoMoney(s.body)
+      const a = await admin.get('/api/bookings/overdue').expect(200)
+      expect(a.body.map((b: any) => b.id)).toContain(ID.pastActive)
+    })
+
+    it('المدير يرى الماضي والمال', async () => {
+      const day = await admin.get(`/api/bookings/day?date=${yesterday}`).expect(200)
+      expect(day.body.summary.revenue).toBe(25000)
+      expect(day.body.bookings.find((b: any) => b.id === ID.past).paidAmount).toBe(25000)
+      const one = await admin.get(`/api/bookings/${ID.past}`).expect(200)
+      expect(one.body.price).toBe(25000)
+    })
+
+    it('لا إلغاء ولا تأكيد ولا تعديل لحجز سابق (404) ولا بقاء أثر', async () => {
+      await staff.post(`/api/bookings/${ID.pastActive}/cancel`).send({}).expect(404)
+      await staff.post(`/api/bookings/${ID.pastActive}/complete`).send({}).expect(404)
+      await staff.patch(`/api/bookings/${ID.pastActive}`).send({ notes: 'x' }).expect(404)
+      expect(db.bookings.find((b) => b.id === ID.pastActive).status).toBe('ACTIVE')
+    })
+  })
+
+  describe('الحجوزات: المال عند الإنشاء والتعديل', () => {
+    const body = (over: Record<string, unknown> = {}) => ({
+      serviceId: ID.s1,
+      startAt: at(14).toISOString(),
+      customerName: 'زبون جديد',
+      ...over,
+    })
+
+    it('إنشاء بسعر مخصص أو بتاريخ سابق → 403 ولا كتابة', async () => {
+      const before = db.bookings.length
+      await staff
+        .post('/api/bookings')
+        .send(body({ price: 1 }))
+        .expect(403)
+      await staff
+        .post('/api/bookings')
+        .send(body({ startAt: at(-5).toISOString() }))
+        .expect(403)
+      expect(db.bookings.length).toBe(before)
+    })
+
+    it('إنشاء عادي: يُحفظ سعر الخدمة ولا يعود للمشرف', async () => {
+      const res = await staff.post('/api/bookings').send(body()).expect(201)
+      expectNoMoney(res.body)
+      expect(db.bookings.find((b) => b.id === res.body.id).price).toBe(25000)
+    })
+
+    it('المدير يحدّد سعراً مخصصاً فيراه', async () => {
+      const res = await admin
+        .post('/api/bookings')
+        .send(body({ price: 18000 }))
+        .expect(201)
+      expect(res.body.price).toBe(18000)
+    })
+
+    it('تعديل السعر أو المبلغ من المشرف → 403', async () => {
+      await staff.patch(`/api/bookings/${ID.today}`).send({ price: 1 }).expect(403)
+      await staff.patch(`/api/bookings/${ID.todayDone}`).send({ paidAmount: 1 }).expect(403)
+      expect(db.bookings.find((b) => b.id === ID.today).price).toBe(18000)
+    })
+
+    it('تعديل الملاحظات يُبقي سعر المدير المخصص', async () => {
+      const res = await staff
+        .patch(`/api/bookings/${ID.today}`)
+        .send({ notes: 'ملاحظة' })
+        .expect(200)
+      expectNoMoney(res.body)
+      expect(db.bookings.find((b) => b.id === ID.today).price).toBe(18000)
+    })
+  })
+
+  describe('تأكيد الحجز (D11)', () => {
+    it('المشرف بلا جسم: يُسجَّل السعر الذي حدّده المدير (18000) ولا يظهر له', async () => {
+      const res = await staff.post(`/api/bookings/${ID.today}/complete`).send({}).expect(200)
+      expect(res.body.status).toBe('COMPLETED')
+      expectNoMoney(res.body)
+      const stored = db.bookings.find((b) => b.id === ID.today)
+      expect(stored.paidAmount).toBe(18000)
+      expect(stored.price).toBe(18000)
+    })
+
+    it('أي مبلغ صريح من المشرف → 403 ولا تغيير', async () => {
+      for (const paidAmount of [0, 18000, 99999]) {
+        await staff.post(`/api/bookings/${ID.today}/complete`).send({ paidAmount }).expect(403)
+      }
+      expect(db.bookings.find((b) => b.id === ID.today).status).toBe('ACTIVE')
+    })
+
+    it('سعر الحجز 0: يُستعمل سعر الخدمة الحالي', async () => {
+      db.bookings.find((b) => b.id === ID.today).price = 0
+      await staff.post(`/api/bookings/${ID.today}/complete`).send({}).expect(200)
+      expect(db.bookings.find((b) => b.id === ID.today).paidAmount).toBe(25000)
+    })
+
+    it('المدير: مبلغ صريح يُسجَّل ويراه', async () => {
+      const res = await admin
+        .post(`/api/bookings/${ID.today}/complete`)
+        .send({ paidAmount: 15000 })
+        .expect(200)
+      expect(res.body.paidAmount).toBe(15000)
+    })
+
+    it('تراجع المشرف عن تأكيده ممكن، لكن ليس بعد أن عدّل المدير المبلغ', async () => {
+      await staff.post(`/api/bookings/${ID.today}/complete`).send({}).expect(200)
+      await staff.post(`/api/bookings/${ID.today}/reopen`).expect(200)
+      expect(db.bookings.find((b) => b.id === ID.today).status).toBe('ACTIVE')
+
+      await admin.post(`/api/bookings/${ID.today}/complete`).send({ paidAmount: 15000 }).expect(200)
+      const denied = await staff.post(`/api/bookings/${ID.today}/reopen`).expect(403)
+      expect(denied.body.message).toBe('لا يمكن إعادة فتح هذا الحجز، راجع المدير')
+      expect(db.bookings.find((b) => b.id === ID.today).paidAmount).toBe(15000)
+    })
+
+    it('الإلغاء لحجز اليوم مسموح ولا مال في الاستجابة', async () => {
+      const res = await staff
+        .post(`/api/bookings/${ID.future}/cancel`)
+        .send({ reason: 'اعتذر' })
+        .expect(200)
+      expect(res.body.status).toBe('CANCELLED')
+      expectNoMoney(res.body)
+    })
+  })
+
+  describe('الزبائن', () => {
+    it('ملف الزبون للمشرف: القادم من اليوم فقط، إحصائية القادمة وحدها، بلا مال', async () => {
+      const res = await staff.get(`/api/customers/${ID.c1}`).expect(200)
+      expect(Object.keys(res.body.stats)).toEqual(['upcoming'])
+      expect(res.body.bookings.map((b: any) => b.id).sort()).toEqual(
+        [ID.today, ID.todayDone, ID.future].sort(),
+      )
+      expectNoMoney(res.body)
+    })
+
+    it('ملف الزبون للمدير: السجل كاملاً مع المجموع والزيارات', async () => {
+      const res = await admin.get(`/api/customers/${ID.c1}`).expect(200)
+      expect(res.body.stats).toMatchObject({ visits: 2, totalSpent: 50000 })
+      expect(res.body.bookings).toHaveLength(5)
+    })
+
+    it('قائمة الزبائن: المشرف بلا زيارات، والمدير معها', async () => {
+      const s = await staff.get('/api/customers').expect(200)
+      expect(s.body.items[0]).not.toHaveProperty('visits')
+      expect(s.body.items[0]).not.toHaveProperty('lastVisitAt')
+      const a = await admin.get('/api/customers').expect(200)
+      expect(a.body.items[0].visits).toBe(2)
+    })
+  })
+})

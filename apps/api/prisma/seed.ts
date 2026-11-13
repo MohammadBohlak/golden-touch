@@ -5,47 +5,10 @@
 import prismaPkg from '@prisma/client'
 import bcrypt from 'bcrypt'
 
+import { PERMISSIONS, STAFF_PERMISSIONS } from './permissions.ts'
+
 const { PrismaClient } = prismaPkg
 const prisma = new PrismaClient()
-
-const PERMISSIONS: Array<[key: string, description: string]> = [
-  ['users.read', 'عرض المستخدمين'],
-  ['users.create', 'إضافة مستخدم'],
-  ['users.update', 'تعديل مستخدم'],
-  ['users.delete', 'حذف مستخدم'],
-  ['roles.read', 'عرض الأدوار والصلاحيات'],
-  ['services.read', 'عرض الخدمات'],
-  ['services.create', 'إضافة خدمة'],
-  ['services.update', 'تعديل خدمة'],
-  ['services.delete', 'حذف خدمة'],
-  ['customers.read', 'عرض الزبائن'],
-  ['customers.create', 'إضافة زبون'],
-  ['customers.update', 'تعديل زبون'],
-  ['customers.delete', 'حذف زبون'],
-  ['bookings.read', 'عرض الحجوزات'],
-  ['bookings.create', 'إنشاء حجز'],
-  ['bookings.update', 'تعديل حجز'],
-  ['bookings.complete', 'إكمال حجز وتسجيل الدفع'],
-  ['bookings.cancel', 'إلغاء حجز'],
-  ['bookings.delete', 'حذف حجز نهائياً'],
-  ['stats.read', 'عرض الإحصائيات'],
-  ['settings.read', 'عرض إعدادات الصالون'],
-  ['settings.update', 'تعديل إعدادات الصالون'],
-]
-
-const STAFF_PERMISSIONS = [
-  'services.read',
-  'customers.read',
-  'customers.create',
-  'customers.update',
-  'bookings.read',
-  'bookings.create',
-  'bookings.update',
-  'bookings.complete',
-  'bookings.cancel',
-  'stats.read',
-  'settings.read',
-]
 
 /** الأسعار تبقى 0 حتى يحددها الحلاق من صفحة الخدمات */
 const DEFAULT_SERVICES = [

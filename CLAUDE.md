@@ -19,7 +19,9 @@
 ## الـ Backend
 
 - بنية حسب الوحدات `src/modules/<name>/` (controller + service + dto + module). المنطق النقي القابل للاختبار في ملفات منفصلة (`schedule.ts`، `stats.calc.ts`).
-- الصلاحيات بصيغة `resource.action` (مثل `bookings.complete`) تُعرَّف في `prisma/seed.ts` وتُفرض بـ `@RequirePermissions(...)`. كل المسارات محمية افتراضياً إلا `@Public()`.
+- الصلاحيات بصيغة `resource.action` (مثل `bookings.complete`) تُعرَّف في `prisma/permissions.ts` (يستوردها الـ seed والاختبارات) وتُفرض بـ `@RequirePermissions(...)`. كل المسارات محمية افتراضياً إلا `@Public()`. **الإنتاج لا يشغّل `db:seed`**: أي صلاحية جديدة أو تغيير لصلاحيات دور يحتاج migration بيانات idempotent بجانب تعديل `permissions.ts`.
+- **المال والسجل (قرار صاحب المشروع — `docs/STAFF_RESTRICTIONS_PLAN.md`):** `finance.read` يتحكم بالأسعار والمبالغ (`price`، `paidAmount`، `revenue`، `totalSpent`…) و`bookings.history` بما قبل بداية اليوم وسجل الزبون. من لا يملكهما **لا تُرسَل له الحقول أصلاً** (المفتاح غائب لا `null`)، عبر `booking.visibility.ts` و`customer.visibility.ts` و`service.visibility.ts`؛ والحجب في الخادم لا في الواجهة وحدها. أي حقل مالي أو تاريخي جديد يمرّ بهذه الدوال. المشرف يؤكّد الحجز بلا مبلغ (يُسجَّل سعر الحجز) ويُرفض أي `price`/`paidAmount` منه. `staff-surface.spec.ts` يثبّت مسارات المشرف بالضبط فيفشل عند إضافة مسار مكشوف.
+- اختبار e2e للمشرف (`test/staff.e2e-spec.ts`) يعمل بـ Prisma وهمي ويغيّر `DATABASE_URL` إلى عنوان ميت — **لا تجعل اختبارات الكتابة تعمل على قاعدة الإنتاج** (القاعدة حقيقية وفيها بيانات زبائن).
 - رسائل class-validator بالعربية دائماً.
 - **منع تداخل الحجوزات**: فحص في `BookingsService.assertNoOverlap` + قيد `bookings_no_overlap` (EXCLUDE gist) في migration الأولى. الحالة `CANCELLED` لا تحجز الوقت. لا تحذف القيد.
 - الأوقات UTC في القاعدة؛ "اليوم" وساعات الدوام بتوقيت `ShopSettings.timezone` عبر `common/utils/time.ts`.
@@ -28,6 +30,7 @@
 
 ## الواجهة
 
+- **الحقول المالية/التاريخية اختيارية في `types/api.ts`** (`price?`، `visits?`…): أخفِ العنصر بشرط غياب الحقل (`v-if="b.price !== undefined"`) لا باسم الدور، واحذفه بدل تعطيله وأعد توزيع التخطيط.
 - **خصائص RTL المنطقية فقط**: `ms-/me-/ps-/pe-/start-/end-/text-start/border-s`. لا `ml/mr/left/right`.
 - الأيقونات من `AppIcon` (`app/utils/icons.ts`)؛ اكتب الأيقونات الاتجاهية بمعناها في LTR (السابق = `chevron-left`) وستُعكس تلقائياً.
 - الألوان من الأسماء الدلالية في `assets/css/main.css` (`canvas`, `surface`, `fg`, `fg-muted`, `line`, `gold-*`, `ink-*`) — لا قيم hex داخل المكوّنات.

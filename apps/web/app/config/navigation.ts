@@ -60,7 +60,8 @@ export const NAVIGATION: NavItem[] = [
     description: 'الخدمات ومدتها وسعرها',
     icon: 'scissors',
     to: '/services',
-    permission: 'services.read',
+    // صفحة إدارة الأسعار والخدمات؛ المشرف يقرأ الخدمات (الاسم والمدة) في نموذج الحجز فقط
+    permission: 'services.update',
     placement: ['sidebar', 'more'],
   },
   {
@@ -90,6 +91,14 @@ export const NAVIGATION: NavItem[] = [
     placement: ['more'],
   },
 ]
+
+/** عناصر قائمة لموضع معيّن يراها من يملك هذه الصلاحيات (`has` مُمرَّرة لتبقى الدالة نقية وقابلة للاختبار) */
+export function navigationFor(
+  placement: NavPlacement,
+  has: (permission: NavItem['permission']) => boolean,
+): NavItem[] {
+  return NAVIGATION.filter((item) => item.placement.includes(placement) && has(item.permission))
+}
 
 export function isNavActive(item: NavItem, path: string): boolean {
   if (item.exclude?.includes(path)) return false

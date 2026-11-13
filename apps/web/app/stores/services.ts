@@ -1,8 +1,9 @@
 import { defineStore } from 'pinia'
 import type { Service } from '~/types/api'
 
-export type ServiceInput = Pick<Service, 'name' | 'price' | 'durationMinutes'> &
-  Partial<Pick<Service, 'isActive' | 'sortOrder'>>
+export type ServiceInput = Pick<Service, 'name' | 'durationMinutes'> & { price: number } & Partial<
+    Pick<Service, 'isActive' | 'sortOrder'>
+  >
 
 /** الخدمات تُستخدم في كل نموذج حجز — نحمّلها مرة ونحدّثها محلياً بعد كل تعديل */
 export const useServicesStore = defineStore('services', {

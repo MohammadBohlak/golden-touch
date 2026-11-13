@@ -10,8 +10,10 @@ import {
   Query,
 } from '@nestjs/common'
 import { ApiCookieAuth, ApiOperation, ApiTags } from '@nestjs/swagger'
+import { CurrentUser } from '../../common/decorators/current-user.decorator'
 import { RequirePermissions } from '../../common/decorators/permissions.decorator'
 import { PaginationQueryDto } from '../../common/dto/pagination-query.dto'
+import type { AuthUser } from '../../common/types/auth-user'
 import { CustomersService } from './customers.service'
 import { CreateCustomerDto, UpdateCustomerDto } from './dto/customer.dto'
 
@@ -23,16 +25,23 @@ export class CustomersController {
 
   @Get()
   @RequirePermissions('customers.read')
-  @ApiOperation({ summary: 'الزبائن مع عدد الزيارات وآخر زيارة (بحث بالاسم أو الهاتف)' })
-  findAll(@Query() query: PaginationQueryDto) {
-    return this.customers.findAll(query)
+  @ApiOperation({
+    summary: 'الزبائن مع عدد الزيارات وآخر زيارة (بحث بالاسم أو الهاتف)',
+    description: 'الزيارات وآخر زيارة لمن يملك bookings.history فقط.',
+  })
+  findAll(@Query() query: PaginationQueryDto, @CurrentUser() user: AuthUser) {
+    return this.customers.findAll(query, user)
   }
 
   @Get(':id')
   @RequirePermissions('customers.read')
-  @ApiOperation({ summary: 'ملف الزبون: إحصائياته وآخر حجوزاته' })
-  findOne(@Param('id', ParseUUIDPipe) id: string) {
-    return this.customers.findOne(id)
+  @ApiOperation({
+    summary: 'ملف الزبون: إحصائياته وآخر حجوزاته',
+    description:
+      'من لا يملك bookings.history: الحجوزات القادمة فقط وبلا زيارات/ملغاة. من لا يملك finance.read: بلا مجموع مدفوع ولا أسعار.',
+  })
+  findOne(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: AuthUser) {
+    return this.customers.findOne(id, user)
   }
 
   @Post()

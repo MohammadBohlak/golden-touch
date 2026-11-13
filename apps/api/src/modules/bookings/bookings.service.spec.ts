@@ -68,6 +68,7 @@ function setup() {
   }
   const prisma = {
     ...base,
+    $queryRaw: jest.fn(),
     $transaction: jest.fn((arg: unknown) =>
       Array.isArray(arg) ? Promise.all(arg) : (arg as (tx: unknown) => unknown)(base),
     ),
@@ -400,5 +401,20 @@ describe('BookingsService — الحجوزات الدورية', () => {
       { where: { recurringId?: string } },
     ]
     expect(where.recurringId).toBe('r1')
+  })
+})
+
+describe('BookingsService.findAll — البحث بتوحيد الحروف العربية', () => {
+  it('معرّفات الزبائن وأسماء الخدمات المطابقة تدخل في where مع شرط الهاتف', async () => {
+    const { service, prisma } = setup()
+    ;(prisma as unknown as { $queryRaw: jest.Mock }).$queryRaw
+      .mockResolvedValueOnce([{ id: 'c1' }])
+      .mockResolvedValueOnce([{ value: 'حلاقة شعر' }])
+    await service.findAll({ skip: 0, limit: 15, search: 'احمد' } as never, ADMIN)
+    const [{ where }] = prisma.booking.findMany.mock.calls[0] as [{ where: { OR: unknown[] } }]
+    expect(where.OR).toEqual([
+      { customerId: { in: ['c1'] } },
+      { serviceName: { in: ['حلاقة شعر'] } },
+    ])
   })
 })

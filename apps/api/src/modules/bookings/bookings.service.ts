@@ -9,6 +9,7 @@ import { BookingStatus, Prisma } from '@prisma/client'
 import { paginated, PaginatedResponse } from '../../common/dto/pagination-query.dto'
 import { isBookingOverlapError } from '../../common/filters/all-exceptions.filter'
 import type { AuthUser } from '../../common/types/auth-user'
+import { matchingIds, matchingValues } from '../../common/utils/name-search'
 import { normalizePhone } from '../../common/utils/phone'
 import { addDays, addMinutes, dayRangeUtc, formatTime, toDateString } from '../../common/utils/time'
 import { PrismaService } from '../../prisma/prisma.service'
@@ -171,9 +172,14 @@ export class BookingsService {
     }
     if (query.search) {
       const phone = normalizePhone(query.search)
+      // الأسماء بتوحيد الحروف العربية («احمد» تطابق «أحمد»)، والهاتف كما كان
+      const [customerIds, serviceNames] = await Promise.all([
+        matchingIds(this.prisma, 'customers', query.search),
+        matchingValues(this.prisma, 'bookingServiceName', query.search),
+      ])
       where.OR = [
-        { customer: { name: { contains: query.search, mode: 'insensitive' } } },
-        { serviceName: { contains: query.search, mode: 'insensitive' } },
+        { customerId: { in: customerIds } },
+        { serviceName: { in: serviceNames } },
         ...(phone ? [{ customer: { phone: { contains: phone } } }] : []),
       ]
     }

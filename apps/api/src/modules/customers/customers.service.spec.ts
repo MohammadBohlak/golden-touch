@@ -66,6 +66,7 @@ function setup() {
         ]),
     },
     $transaction: jest.fn((arg: unknown[]) => Promise.all(arg)),
+    $queryRaw: jest.fn().mockResolvedValue([{ id: 'c1' }, { id: 'c2' }]),
   }
   const settings = { get: jest.fn().mockResolvedValue({ timezone: 'Asia/Damascus' }) }
   const service = new CustomersService(
@@ -177,5 +178,32 @@ describe('CustomersService.remove', () => {
     const { service, del } = make(0, 0)
     await expect(service.remove('c1')).resolves.toEqual({ success: true })
     expect(del).toHaveBeenCalled()
+  })
+})
+
+describe('CustomersService.findAll — البحث', () => {
+  const whereOf = (prisma: ReturnType<typeof setup>['prisma']) =>
+    (prisma.customer.findMany.mock.calls[0] as [{ where: unknown }])[0].where
+
+  it('الاسم بتوحيد الحروف العربية: المعرّفات المطابقة تدخل في where', async () => {
+    const { service, prisma } = setup()
+    await service.findAll({ skip: 0, limit: 8, page: 1, search: 'احمد' } as never, ADMIN)
+    expect(prisma.$queryRaw).toHaveBeenCalledTimes(1)
+    expect(whereOf(prisma)).toEqual({ OR: [{ id: { in: ['c1', 'c2'] } }] })
+  })
+
+  it('رقم هاتف: يضاف شرط الهاتف إلى شرط الأسماء', async () => {
+    const { service, prisma } = setup()
+    await service.findAll({ skip: 0, limit: 8, page: 1, search: '٠٩٩١٢٣' } as never, ADMIN)
+    expect(whereOf(prisma)).toEqual({
+      OR: [{ id: { in: ['c1', 'c2'] } }, { phone: { contains: '099123' } }],
+    })
+  })
+
+  it('بلا بحث: لا استعلام توحيد ولا شرط', async () => {
+    const { service, prisma } = setup()
+    await service.findAll({ skip: 0, limit: 8, page: 1 } as never, ADMIN)
+    expect(prisma.$queryRaw).not.toHaveBeenCalled()
+    expect(whereOf(prisma)).toEqual({})
   })
 })

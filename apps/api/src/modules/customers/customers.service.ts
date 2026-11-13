@@ -6,6 +6,7 @@ import {
   PaginationQueryDto,
 } from '../../common/dto/pagination-query.dto'
 import type { AuthUser } from '../../common/types/auth-user'
+import { matchingIds } from '../../common/utils/name-search'
 import { normalizePhone } from '../../common/utils/phone'
 import { PrismaService } from '../../prisma/prisma.service'
 import { bookingInclude } from '../bookings/booking.mapper'
@@ -33,13 +34,10 @@ export class CustomersService {
     const { history } = capsOf(actor)
     const search = query.search
     const phone = normalizePhone(search)
+    // الاسم بتوحيد الحروف العربية («احمد» تطابق «أحمد»)، والهاتف كما كان
+    const nameIds = search ? await matchingIds(this.prisma, 'customers', search) : []
     const where: Prisma.CustomerWhereInput = search
-      ? {
-          OR: [
-            { name: { contains: search, mode: 'insensitive' } },
-            ...(phone ? [{ phone: { contains: phone } }] : []),
-          ],
-        }
+      ? { OR: [{ id: { in: nameIds } }, ...(phone ? [{ phone: { contains: phone } }] : [])] }
       : {}
 
     const [customers, total] = await this.prisma.$transaction([

@@ -43,6 +43,7 @@ npm install
 1. `apps/api/.env` — ضع كلمة مرور قاعدة بيانات Supabase مكان `YOUR-DB-PASSWORD` في `DATABASE_URL` و `DIRECT_URL`
    (من Supabase ← Project Settings ← Database. إن احتوت رموزاً خاصة مثل `@ : / # ?` فيجب ترميزها percent-encode).
 2. غيّر `SEED_ADMIN_EMAIL` و `SEED_ADMIN_PASSWORD` لبيانات دخول المدير الأول إن أردت.
+   ولإنشاء حساب مشرف الحجوزات مع الـ seed اضبط أيضاً `SEED_STAFF_EMAIL` و `SEED_STAFF_PASSWORD` (اختياريان؛ بدونهما لا يُنشأ الحساب).
 
 ```bash
 npm run db:migrate

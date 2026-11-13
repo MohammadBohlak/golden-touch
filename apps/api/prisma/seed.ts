@@ -71,7 +71,7 @@ async function main() {
     create: { name: 'admin', label: 'المدير', permissions: { connect: allKeys } },
   })
   const staffKeys = STAFF_PERMISSIONS.map((key) => ({ key }))
-  await prisma.role.upsert({
+  const staff = await prisma.role.upsert({
     where: { name: 'staff' },
     update: { label: 'مشرف الحجوزات', permissions: { set: staffKeys } },
     create: { name: 'staff', label: 'مشرف الحجوزات', permissions: { connect: staffKeys } },
@@ -93,13 +93,38 @@ async function main() {
     })
   }
 
+  // حساب مشرف الحجوزات اختياري: يُنشأ فقط عند ضبط SEED_STAFF_EMAIL و SEED_STAFF_PASSWORD
+  const staffEmail = process.env.SEED_STAFF_EMAIL?.trim().toLowerCase()
+  const staffPassword = process.env.SEED_STAFF_PASSWORD
+  let staffStatus = 'skipped (SEED_STAFF_EMAIL / SEED_STAFF_PASSWORD غير مضبوطين)'
+  if (staffEmail && staffPassword) {
+    if (staffEmail === email) {
+      throw new Error('SEED_STAFF_EMAIL يطابق بريد المدير — استعمل بريداً مختلفاً')
+    }
+    // إن وُجد الحساب نتركه كما هو (لا نعيد كلمة المرور ولا الدور) كي لا نلغي تعديلات المدير
+    const existingStaff = await prisma.user.findUnique({ where: { email: staffEmail } })
+    if (existingStaff) {
+      staffStatus = `${staffEmail} (موجود — لم يُعدَّل)`
+    } else {
+      await prisma.user.create({
+        data: {
+          name: process.env.SEED_STAFF_NAME?.trim() || 'مشرف الحجوزات',
+          email: staffEmail,
+          passwordHash: await bcrypt.hash(staffPassword, 12),
+          roleId: staff.id,
+        },
+      })
+      staffStatus = `${staffEmail} (أُنشئ)`
+    }
+  }
+
   await prisma.shopSettings.upsert({ where: { id: 1 }, update: {}, create: { id: 1 } })
 
   if ((await prisma.service.count()) === 0) {
     await prisma.service.createMany({ data: DEFAULT_SERVICES.map((s) => ({ ...s, price: 0 })) })
   }
 
-  console.log(`✔ seed done — admin: ${email}`)
+  console.log(`✔ seed done — admin: ${email} — staff: ${staffStatus}`)
 }
 
 main()

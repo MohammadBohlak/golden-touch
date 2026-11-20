@@ -50,6 +50,8 @@ function setup() {
       findUnique: jest.fn().mockResolvedValue(customer),
       findMany: jest.fn().mockResolvedValue([{ ...customer, _count: { bookings: 4 } }]),
       count: jest.fn().mockResolvedValue(1),
+      create: jest.fn().mockResolvedValue({ id: 'new' }),
+      update: jest.fn().mockResolvedValue({ id: 'c1' }),
     },
     booking: {
       aggregate: jest.fn().mockResolvedValue({
@@ -196,7 +198,13 @@ describe('CustomersService.findAll — البحث', () => {
     const { service, prisma } = setup()
     await service.findAll({ skip: 0, limit: 8, page: 1, search: '٠٩٩١٢٣' } as never, ADMIN)
     expect(whereOf(prisma)).toEqual({
-      OR: [{ id: { in: ['c1', 'c2'] } }, { phone: { contains: '099123' } }],
+      OR: [
+        { id: { in: ['c1', 'c2'] } },
+        { phone: { contains: '099123' } },
+        { phone: { startsWith: '963' + '99123' } },
+        { phone: { startsWith: '+963' + '99123' } },
+        { phone: { startsWith: '00963' + '99123' } },
+      ],
     })
   })
 
@@ -205,5 +213,69 @@ describe('CustomersService.findAll — البحث', () => {
     await service.findAll({ skip: 0, limit: 8, page: 1 } as never, ADMIN)
     expect(prisma.$queryRaw).not.toHaveBeenCalled()
     expect(whereOf(prisma)).toEqual({})
+  })
+})
+
+describe('CustomersService — تكرار الهاتف', () => {
+  const owners = [{ id: 'c9', name: 'أبو أحمد' }]
+  const phoneWhere = (prisma: ReturnType<typeof setup>['prisma']) =>
+    (prisma.customer.findMany.mock.calls[0] as [{ where: { phone: { in: string[] }; id?: unknown } }])[0]
+      .where
+
+  it('إضافة بهاتف مسجّل (بأي صيغة) ← 409 PHONE_DUPLICATE بأسماء الزبائن ولا يُنشأ', async () => {
+    const { service, prisma } = setup()
+    prisma.customer.findMany.mockResolvedValue(owners)
+    const error = await service.create({ name: 'س', phone: '+963 991 234 567' }).catch((e) => e)
+    expect(error).toBeInstanceOf(ConflictException)
+    expect(error.getResponse()).toMatchObject({
+      code: 'PHONE_DUPLICATE',
+      data: { customers: owners },
+    })
+    expect(error.getResponse().message).toContain('أبو أحمد')
+    expect(phoneWhere(prisma).phone.in).toEqual(
+      expect.arrayContaining(['+963991234567', '0991234567', '963991234567']),
+    )
+    expect(prisma.customer.create).not.toHaveBeenCalled()
+  })
+
+  it('إضافة بهاتف مكرر مع confirmDuplicatePhone ← تُنشأ دون فحص', async () => {
+    const { service, prisma } = setup()
+    prisma.customer.findMany.mockResolvedValue(owners)
+    await service.create({ name: 'س', phone: '0991234567', confirmDuplicatePhone: true })
+    expect(prisma.customer.findMany).not.toHaveBeenCalled()
+    expect(prisma.customer.create).toHaveBeenCalledWith({
+      data: { name: 'س', phone: '0991234567', notes: null },
+    })
+  })
+
+  it('إضافة بلا هاتف ← لا فحص', async () => {
+    const { service, prisma } = setup()
+    await service.create({ name: 'س' })
+    expect(prisma.customer.findMany).not.toHaveBeenCalled()
+    expect(prisma.customer.create).toHaveBeenCalled()
+  })
+
+  it('تعديل بهاتف جديد مسجّل لغيره ← 409، ويستثني الزبون نفسه من الفحص', async () => {
+    const { service, prisma } = setup()
+    prisma.customer.findMany.mockResolvedValue(owners)
+    await expect(service.update('c1', { phone: '0955555555' })).rejects.toBeInstanceOf(
+      ConflictException,
+    )
+    expect(phoneWhere(prisma).id).toEqual({ not: 'c1' })
+    expect(prisma.customer.update).not.toHaveBeenCalled()
+  })
+
+  it('تعديل دون تغيير الهاتف (يشاركه مع غيره أصلاً) ← لا تنبيه', async () => {
+    const { service, prisma } = setup()
+    prisma.customer.findMany.mockResolvedValue(owners)
+    await service.update('c1', { name: 'جديد', phone: '0991234567' })
+    expect(prisma.customer.findMany).not.toHaveBeenCalled()
+    expect(prisma.customer.update).toHaveBeenCalled()
+  })
+
+  it('تعديل زبون غير موجود ← 404', async () => {
+    const { service, prisma } = setup()
+    prisma.customer.findUnique.mockResolvedValue(null)
+    await expect(service.update('x', { name: 'س' })).rejects.toBeInstanceOf(NotFoundException)
   })
 })

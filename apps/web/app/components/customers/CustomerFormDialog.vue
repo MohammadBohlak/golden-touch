@@ -10,6 +10,7 @@ const emit = defineEmits<{ saved: [customer: CustomerRef] }>()
 const { $api } = useNuxtApp()
 const { supported: contactsSupported } = useContactPicker()
 const toast = useToast()
+const { confirm } = useConfirm()
 const serverError = ref('')
 const isEdit = computed(() => Boolean(props.customer))
 
@@ -36,13 +37,39 @@ watch(open, (isOpen) => {
   })
 })
 
+/** أسماء الزبائن الذين يملكون الهاتف نفسه (من استجابة PHONE_DUPLICATE) */
+function duplicateNames(apiError: ReturnType<typeof toApiError>): string[] {
+  const list = apiError.data?.customers
+  return Array.isArray(list) ? list.map((c: { name?: string }) => `"${c.name}"`) : []
+}
+
+async function save(body: Record<string, unknown>): Promise<CustomerRef> {
+  return isEdit.value
+    ? await $api<CustomerRef>(`/customers/${props.customer!.id}`, { method: 'PATCH', body })
+    : await $api<CustomerRef>('/customers', { method: 'POST', body })
+}
+
 const onSubmit = handleSubmit(async (values) => {
   serverError.value = ''
   const body = { name: values.name, phone: values.phone || '', notes: values.notes || '' }
   try {
-    const saved = isEdit.value
-      ? await $api<CustomerRef>(`/customers/${props.customer!.id}`, { method: 'PATCH', body })
-      : await $api<CustomerRef>('/customers', { method: 'POST', body })
+    let saved: CustomerRef
+    try {
+      saved = await save(body)
+    } catch (error) {
+      const apiError = toApiError(error)
+      if (apiError.status !== 409 || apiError.code !== 'PHONE_DUPLICATE') throw error
+      // هاتف مكرر: تنبيه بأسماء أصحابه، ولا حفظ إلا بموافقة المستخدم
+      const names = duplicateNames(apiError)
+      const agreed = await confirm({
+        title: 'رقم الهاتف مسجّل لزبون آخر',
+        message: `الرقم مسجّل مسبقاً ${names.length > 1 ? 'للزبائن' : 'للزبون'} ${names.join('، ')}. هل تريد حفظه رغم ذلك؟`,
+        confirmLabel: 'حفظ رغم التكرار',
+        cancelLabel: 'مراجعة الرقم',
+      })
+      if (!agreed) return
+      saved = await save({ ...body, confirmDuplicatePhone: true })
+    }
     toast.success(isEdit.value ? 'تم حفظ بيانات الزبون' : 'تمت إضافة الزبون')
     emit('saved', saved)
     open.value = false

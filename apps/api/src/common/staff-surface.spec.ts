@@ -110,7 +110,6 @@ describe('سطح الـ API للمشرف', () => {
         'GET /customers',
         'GET /customers/:id',
         'POST /customers',
-        'PATCH /customers/:id',
         'GET /services',
         'GET /services/:id',
         'GET /settings',
@@ -132,6 +131,7 @@ describe('سطح الـ API للمشرف', () => {
       'PATCH /settings',
       'DELETE /bookings/:id',
       'DELETE /customers/:id',
+      'PATCH /customers/:id',
     ]) {
       expect(blocked).toContain(route)
     }

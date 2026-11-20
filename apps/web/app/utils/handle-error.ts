@@ -4,6 +4,9 @@ export interface ApiError {
   status: number
   message: string
   errors?: Record<string, string[]>
+  /** رمز آلي لحالة تتطلب تصرفاً خاصاً (مثل PHONE_DUPLICATE) */
+  code?: string
+  data?: Record<string, unknown>
   /** الطلب أُلغي عمداً (AbortController) — يُتجاهل بصمت */
   aborted?: boolean
 }
@@ -46,7 +49,8 @@ export function toApiError(error: unknown): ApiError {
 
   const status = e.response?.status ?? e.statusCode ?? e.status ?? 0
   const body = (e.response?._data ?? e.data) as
-    { message?: unknown; errors?: Record<string, string[]> } | undefined
+    | { message?: unknown; errors?: Record<string, string[]>; code?: unknown; data?: unknown }
+    | undefined
 
   if (!status) return { status: 0, message: NETWORK_MESSAGE }
 
@@ -55,7 +59,15 @@ export function toApiError(error: unknown): ApiError {
     serverMessage && /[؀-ۿ]/.test(serverMessage)
       ? serverMessage
       : (STATUS_MESSAGES[status] ?? STATUS_MESSAGES[500]!)
-  return body?.errors ? { status, message, errors: body.errors } : { status, message }
+  const code = typeof body?.code === 'string' ? body.code : undefined
+  const data = body?.data && typeof body.data === 'object' ? (body.data as Record<string, unknown>) : undefined
+  return {
+    status,
+    message,
+    ...(body?.errors ? { errors: body.errors } : {}),
+    ...(code ? { code } : {}),
+    ...(code && data ? { data } : {}),
+  }
 }
 
 /** أول رسالة لكل حقل — جاهزة لـ vee-validate setErrors */

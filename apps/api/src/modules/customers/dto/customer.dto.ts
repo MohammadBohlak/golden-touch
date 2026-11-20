@@ -1,6 +1,6 @@
 import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger'
 import { Transform } from 'class-transformer'
-import { IsNotEmpty, IsOptional, IsString, Matches, MaxLength } from 'class-validator'
+import { IsBoolean, IsNotEmpty, IsOptional, IsString, Matches, MaxLength } from 'class-validator'
 
 const trim = ({ value }: { value: unknown }) => (typeof value === 'string' ? value.trim() : value)
 
@@ -26,6 +26,14 @@ export class CreateCustomerDto {
   @IsString()
   @MaxLength(500, { message: 'الملاحظات طويلة جداً' })
   notes?: string
+
+  @ApiPropertyOptional({
+    description:
+      'موافقة المستخدم على تكرار الهاتف مع زبون آخر. بدونها يُرفض الطلب بـ 409 (code=PHONE_DUPLICATE) مع أسماء أصحاب الرقم.',
+  })
+  @IsOptional()
+  @IsBoolean({ message: 'قيمة التأكيد غير صالحة' })
+  confirmDuplicatePhone?: boolean
 }
 
 export class UpdateCustomerDto extends PartialType(CreateCustomerDto) {}

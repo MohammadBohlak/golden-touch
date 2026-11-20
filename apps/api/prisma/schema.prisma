@@ -99,7 +99,7 @@ model Service {
 model Customer {
   id        String   @id @default(uuid()) @db.Uuid
   name      String
-  phone     String?  @unique
+  phone     String?
   notes     String?
   createdAt DateTime @default(now()) @db.Timestamptz(3)
   updatedAt DateTime @updatedAt @db.Timestamptz(3)
@@ -108,6 +108,7 @@ model Customer {
   recurringBookings RecurringBooking[]
 
   @@index([name])
+  @@index([phone])
   @@map("customers")
 }
 

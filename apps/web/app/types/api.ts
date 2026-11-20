@@ -11,6 +11,9 @@ export interface ApiErrorBody {
   statusCode: number
   message: string
   errors?: Record<string, string[]>
+  /** رمز آلي (مثل PHONE_DUPLICATE) مع بياناته */
+  code?: string
+  data?: Record<string, unknown>
 }
 
 export interface RoleRef {

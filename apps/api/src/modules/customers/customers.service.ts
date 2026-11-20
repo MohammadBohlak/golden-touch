@@ -7,7 +7,7 @@ import {
 } from '../../common/dto/pagination-query.dto'
 import type { AuthUser } from '../../common/types/auth-user'
 import { matchingIds } from '../../common/utils/name-search'
-import { normalizePhone } from '../../common/utils/phone'
+import { normalizePhone, phoneSearchFilters, phoneVariants } from '../../common/utils/phone'
 import { PrismaService } from '../../prisma/prisma.service'
 import { bookingInclude } from '../bookings/booking.mapper'
 import { capsOf, historyCutoff, toBookingView } from '../bookings/booking.visibility'
@@ -33,11 +33,11 @@ export class CustomersService {
   ): Promise<PaginatedResponse<CustomerListItem>> {
     const { history } = capsOf(actor)
     const search = query.search
-    const phone = normalizePhone(search)
-    // الاسم بتوحيد الحروف العربية («احمد» تطابق «أحمد»)، والهاتف كما كان
+    const phoneFilters = phoneSearchFilters(search)
+    // الاسم بتوحيد الحروف العربية («احمد» تطابق «أحمد»)، والهاتف بكل صيغه (0 / 963 / +963)
     const nameIds = search ? await matchingIds(this.prisma, 'customers', search) : []
     const where: Prisma.CustomerWhereInput = search
-      ? { OR: [{ id: { in: nameIds } }, ...(phone ? [{ phone: { contains: phone } }] : [])] }
+      ? { OR: [{ id: { in: nameIds } }, ...phoneFilters.map((phone) => ({ phone }))] }
       : {}
 
     const [customers, total] = await this.prisma.$transaction([
@@ -136,16 +136,20 @@ export class CustomersService {
 
   async create(dto: CreateCustomerDto) {
     const phone = normalizePhone(dto.phone)
-    await this.assertPhoneFree(phone)
+    if (!dto.confirmDuplicatePhone) await this.assertPhoneUnshared(phone)
     return this.prisma.customer.create({
       data: { name: dto.name, phone, notes: dto.notes || null },
     })
   }
 
   async update(id: string, dto: UpdateCustomerDto) {
-    await this.ensureExists(id)
+    const current = await this.prisma.customer.findUnique({ where: { id } })
+    if (!current) throw new NotFoundException('الزبون غير موجود')
     const phone = dto.phone === undefined ? undefined : normalizePhone(dto.phone)
-    if (phone) await this.assertPhoneFree(phone, id)
+    // الفحص فقط عند تغيير الرقم: زبون يشارك رقمه مع غيره أصلاً لا يُنبَّه كل مرة يُعدَّل فيها
+    if (phone && phone !== current.phone && !dto.confirmDuplicatePhone) {
+      await this.assertPhoneUnshared(phone, id)
+    }
     return this.prisma.customer.update({
       where: { id },
       data: {
@@ -174,14 +178,25 @@ export class CustomersService {
     if (!exists) throw new NotFoundException('الزبون غير موجود')
   }
 
-  private async assertPhoneFree(phone: string | null, excludeId?: string) {
+  /**
+   * الهاتف غير فريد: تكراره مسموح بموافقة المستخدم. يُطابَق بصيغ `0` و`963` و`+963` كرقم واحد؛
+   * وإن وُجد زبون آخر بالرقم نفسه يُرفض الطلب بـ 409 + PHONE_DUPLICATE مع أسمائهم
+   * فتعرض الواجهة تنبيهاً وتعيد الإرسال بـ confirmDuplicatePhone.
+   */
+  private async assertPhoneUnshared(phone: string | null, excludeId?: string) {
     if (!phone) return
-    const owner = await this.prisma.customer.findUnique({ where: { phone } })
-    if (owner && owner.id !== excludeId) {
-      throw new ConflictException({
-        message: `رقم الهاتف مسجّل مسبقاً للزبون "${owner.name}"`,
-        errors: { phone: ['رقم الهاتف مسجّل مسبقاً'] },
-      })
-    }
+    const owners = await this.prisma.customer.findMany({
+      where: { phone: { in: phoneVariants(phone) }, ...(excludeId ? { id: { not: excludeId } } : {}) },
+      select: { id: true, name: true },
+      orderBy: { createdAt: 'asc' },
+      take: 5,
+    })
+    if (!owners.length) return
+    const names = owners.map((o) => `"${o.name}"`).join('، ')
+    throw new ConflictException({
+      message: `رقم الهاتف مسجّل مسبقاً ${owners.length > 1 ? 'للزبائن' : 'للزبون'} ${names}`,
+      code: 'PHONE_DUPLICATE',
+      data: { customers: owners },
+    })
   }
 }

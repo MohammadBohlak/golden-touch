@@ -10,7 +10,7 @@ import { paginated, PaginatedResponse } from '../../common/dto/pagination-query.
 import { isBookingOverlapError } from '../../common/filters/all-exceptions.filter'
 import type { AuthUser } from '../../common/types/auth-user'
 import { matchingIds, matchingValues } from '../../common/utils/name-search'
-import { normalizePhone } from '../../common/utils/phone'
+import { normalizePhone, phoneSearchFilters, phoneVariants } from '../../common/utils/phone'
 import { addDays, addMinutes, dayRangeUtc, formatTime, toDateString } from '../../common/utils/time'
 import { PrismaService } from '../../prisma/prisma.service'
 import { SettingsService } from '../settings/settings.service'
@@ -171,8 +171,8 @@ export class BookingsService {
       }
     }
     if (query.search) {
-      const phone = normalizePhone(query.search)
-      // الأسماء بتوحيد الحروف العربية («احمد» تطابق «أحمد»)، والهاتف كما كان
+      const phoneFilters = phoneSearchFilters(query.search)
+      // الأسماء بتوحيد الحروف العربية («احمد» تطابق «أحمد»)، والهاتف بكل صيغه (0 / 963 / +963)
       const [customerIds, serviceNames] = await Promise.all([
         matchingIds(this.prisma, 'customers', query.search),
         matchingValues(this.prisma, 'bookingServiceName', query.search),
@@ -180,7 +180,7 @@ export class BookingsService {
       where.OR = [
         { customerId: { in: customerIds } },
         { serviceName: { in: serviceNames } },
-        ...(phone ? [{ customer: { phone: { contains: phone } } }] : []),
+        ...phoneFilters.map((phone) => ({ customer: { phone } })),
       ]
     }
     const [items, total] = await this.prisma.$transaction([
@@ -481,7 +481,12 @@ export class BookingsService {
     }
     const phone = normalizePhone(dto.customerPhone)
     if (phone) {
-      const existing = await tx.customer.findUnique({ where: { phone } })
+      // الهاتف لم يعد فريداً: الأقدم تسجيلاً يُعاد استعماله (و0/963/+963 رقم واحد)
+      const existing = await tx.customer.findFirst({
+        where: { phone: { in: phoneVariants(phone) } },
+        orderBy: { createdAt: 'asc' },
+        select: { id: true },
+      })
       if (existing) return existing.id
     }
     const created = await tx.customer.create({ data: { name, phone } })

@@ -43,8 +43,7 @@ export const PERMISSIONS: Array<[key: string, description: string]> = [
 export const STAFF_PERMISSIONS: string[] = [
   'services.read', // الاسم والمدة فقط — الـ API يحذف السعر عنه
   'customers.read',
-  'customers.create',
-  'customers.update',
+  'customers.create', // إضافة زبون فقط — تعديل بياناته للمدير وحده
   'bookings.read',
   'bookings.create',
   'bookings.update',

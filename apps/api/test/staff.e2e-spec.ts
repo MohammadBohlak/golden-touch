@@ -285,7 +285,14 @@ const fakePrisma: any = {
     findUnique: async ({ where }: any) =>
       db.customers.find((c) => (where.id ? c.id === where.id : c.phone === where.phone)) ?? null,
     findMany: async (args: any) =>
-      page(db.customers, args).map((c) => ({
+      page(
+        db.customers.filter(
+          (c) =>
+            (!args?.where?.phone?.in || args.where.phone.in.includes(c.phone)) &&
+            (!args?.where?.id?.not || c.id !== args.where.id.not),
+        ),
+        args,
+      ).map((c) => ({
         ...c,
         _count: {
           bookings: db.bookings.filter((b) => b.customerId === c.id && b.status === 'COMPLETED')
@@ -302,6 +309,11 @@ const fakePrisma: any = {
         ...data,
       }
       db.customers.push(row)
+      return row
+    },
+    update: async ({ where, data }: any) => {
+      const row = db.customers.find((c) => c.id === where.id)
+      Object.assign(row, Object.fromEntries(Object.entries(data).filter(([, v]) => v !== undefined)))
       return row
     },
   },
@@ -715,6 +727,33 @@ describe('مشرف الحجوزات مقابل المدير (e2e بلا قاعد
       expect(s.body.items[0]).not.toHaveProperty('lastVisitAt')
       const a = await admin.get('/api/customers').expect(200)
       expect(a.body.items[0].visits).toBe(2)
+    })
+
+    it('تعديل بيانات الزبون للمدير وحده: المشرف 403 والمدير 200', async () => {
+      const before = db.customers.find((c) => c.id === ID.c1).name
+      await staff.patch(`/api/customers/${ID.c1}`).send({ name: 'اسم جديد' }).expect(403)
+      expect(db.customers.find((c) => c.id === ID.c1).name).toBe(before)
+      await admin.patch(`/api/customers/${ID.c1}`).send({ name: 'اسم جديد' }).expect(200)
+      db.customers.find((c) => c.id === ID.c1).name = before
+    })
+
+    it('الإضافة للمشرف: هاتف مكرر (بصيغة +963) ← 409 PHONE_DUPLICATE باسم الزبون، ثم يُقبل بالتأكيد', async () => {
+      const body = { name: 'زبون ثانٍ', phone: '+963 991 234 567' }
+      const res = await staff.post('/api/customers').send(body).expect(409)
+      expect(res.body).toMatchObject({
+        statusCode: 409,
+        code: 'PHONE_DUPLICATE',
+        data: { customers: [{ id: ID.c1, name: 'زبون تجريبي' }] },
+      })
+      expect(res.body.message).toContain('زبون تجريبي')
+      expect(db.customers).toHaveLength(1)
+
+      await staff
+        .post('/api/customers')
+        .send({ ...body, confirmDuplicatePhone: true })
+        .expect(201)
+      expect(db.customers).toHaveLength(2)
+      db.customers.pop()
     })
   })
 

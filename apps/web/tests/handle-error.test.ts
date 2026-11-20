@@ -22,6 +22,21 @@ describe('toApiError', () => {
     )
   })
 
+  it('keeps code and data (PHONE_DUPLICATE) and omits them otherwise', () => {
+    const data = { customers: [{ id: 'c1', name: 'أبو أحمد' }] }
+    const dup = toApiError({
+      response: {
+        status: 409,
+        _data: { message: 'رقم الهاتف مسجّل مسبقاً للزبون "أبو أحمد"', code: 'PHONE_DUPLICATE', data },
+      },
+    })
+    assert.equal(dup.code, 'PHONE_DUPLICATE')
+    assert.deepEqual(dup.data, data)
+    const plain = toApiError({ response: { status: 409, _data: { message: 'تعارض' } } })
+    assert.equal('code' in plain, false)
+    assert.equal('data' in plain, false)
+  })
+
   it('detects network failures and aborts', () => {
     assert.equal(toApiError({ name: 'FetchError', message: 'fetch failed' }).status, 0)
     assert.equal(toApiError({ name: 'AbortError' }).aborted, true)

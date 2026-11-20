@@ -15,7 +15,6 @@ const STAFF_MUST_HAVE = [
   'bookings.update',
   'customers.create',
   'customers.read',
-  'customers.update',
   'recurring.manage', // الحجوزات الدورية — بلا مال ولا ماضٍ (docs/RECURRING_BOOKINGS_PLAN.md)
   'recurring.read',
   'services.read',
@@ -30,6 +29,7 @@ const STAFF_MUST_NOT_HAVE = [
   'bookings.history',
   'bookings.delete',
   'customers.delete',
+  'customers.update', // تعديل بيانات الزبون للمدير وحده (الإضافة مسموحة للمشرف)
   // الخدمات والإعدادات والمستخدمون
   'services.create',
   'services.update',

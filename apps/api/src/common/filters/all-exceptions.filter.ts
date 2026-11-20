@@ -13,6 +13,10 @@ export interface ErrorBody {
   statusCode: number
   message: string
   errors?: Record<string, string[]>
+  /** رمز آلي للحالات التي تتطلّب تصرفاً خاصاً من الواجهة (مثل PHONE_DUPLICATE) */
+  code?: string
+  /** بيانات الحالة المرتبطة بـ code (مثلاً الزبائن المتطابقو الهاتف) */
+  data?: Record<string, unknown>
 }
 
 const DEFAULT_MESSAGES: Record<number, string> = {
@@ -62,7 +66,18 @@ export class AllExceptionsFilter implements ExceptionFilter {
           ? rawMessage
           : (DEFAULT_MESSAGES[statusCode] ?? DEFAULT_MESSAGES[500])
       const errors = payload.errors as Record<string, string[]> | undefined
-      return errors ? { statusCode, message, errors } : { statusCode, message }
+      const code = typeof payload.code === 'string' ? payload.code : undefined
+      const data =
+        payload.data && typeof payload.data === 'object'
+          ? (payload.data as Record<string, unknown>)
+          : undefined
+      return {
+        statusCode,
+        message,
+        ...(errors ? { errors } : {}),
+        ...(code ? { code } : {}),
+        ...(code && data ? { data } : {}),
+      }
     }
 
     if (isBookingOverlapError(exception)) {

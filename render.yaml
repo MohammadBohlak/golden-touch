@@ -40,3 +40,9 @@ services:
         value: '56'
       - key: RECURRING_SYNC_MINUTES
         value: '360'
+      # Web Push (docs/PUSH_NOTIFICATIONS_PLAN.md): المفتاحان من `npx web-push generate-vapid-keys` — يُضبطان في لوحة Render لا هنا.
+      # بدونهما تُعطَّل الميزة بهدوء. لا تغيّر المفتاح الخاص لاحقاً: يبطل كل الاشتراكات.
+      - key: VAPID_PUBLIC_KEY
+        sync: false
+      - key: VAPID_PRIVATE_KEY
+        sync: false

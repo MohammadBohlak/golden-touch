@@ -104,7 +104,8 @@ describe('صفحات التطبيق والصلاحيات', () => {
       .filter(([, permission]) => !hasAnyPermission(STAFF_PERMISSIONS, permission))
       .map(([route]) => route)
       .sort()
-    assert.deepEqual(blocked, ['/services', '/settings', '/stats', '/users'])
+    // /push-lab: صفحة تجربة مؤقتة (المرحلة 0 من docs/PUSH_NOTIFICATIONS_PLAN.md) — تُحذف مع المرحلة 1
+    assert.deepEqual(blocked, ['/push-lab', '/services', '/settings', '/stats', '/users'])
   })
 
   it('صلاحية كل عنصر قائمة = صلاحية صفحته (لا صفحة مفتوحة وزرّها مخفي)', () => {

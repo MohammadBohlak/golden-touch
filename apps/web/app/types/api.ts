@@ -268,3 +268,15 @@ export interface RecurringPreview {
   /** مواعيد قادمة عُدّلت يدوياً وستبقى */
   keptEdited: number
 }
+
+/** تجربة الإشعارات (المرحلة 0، مؤقتة) — docs/PUSH_NOTIFICATIONS_PLAN.md */
+export interface PushLabStatus {
+  /** false = مفاتيح VAPID غير مضبوطة على الخادم */
+  enabled: boolean
+  publicKey: string | null
+  /** عدد أجهزتي المشتركة */
+  subscriptions: number
+  pending: Array<{ inSeconds: number }>
+  /** آخر الإرسالات: status 201 = قبلته خدمة Push، 0 = فشل شبكة */
+  log: Array<{ at: string; status: number; removed: boolean }>
+}

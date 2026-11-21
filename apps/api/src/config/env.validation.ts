@@ -24,4 +24,8 @@ export const envValidationSchema = Joi.object({
   // الحجوزات الدورية: أفق التوليد بالأيام، وفاصل المزامنة بالدقائق (0 = معطّلة)
   RECURRING_HORIZON_DAYS: Joi.number().integer().min(14).max(180).default(56),
   RECURRING_SYNC_MINUTES: Joi.number().integer().min(0).max(1440).default(360),
+  // Web Push (VAPID): اختياريان معاً؛ subject رابط الموقع أو mailto: (لا بريد شخصي)
+  VAPID_PUBLIC_KEY: Joi.string(),
+  VAPID_PRIVATE_KEY: Joi.string(),
+  VAPID_SUBJECT: Joi.string().uri({ scheme: ['https', 'mailto'] }),
 })

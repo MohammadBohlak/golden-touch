@@ -73,6 +73,16 @@ export class AppConfig {
     return Number(this.config.get('RECURRING_SYNC_MINUTES', 360))
   }
 
+  /** مفاتيح VAPID لـ Web Push — بدونها تُعطَّل الميزة بهدوء (docs/PUSH_NOTIFICATIONS_PLAN.md §5.3) */
+  get vapid(): { publicKey: string; privateKey: string; subject: string } | undefined {
+    const publicKey = this.config.get<string>('VAPID_PUBLIC_KEY')
+    const privateKey = this.config.get<string>('VAPID_PRIVATE_KEY')
+    if (!publicKey || !privateKey) return undefined
+    const subject =
+      this.config.get<string>('VAPID_SUBJECT') || this.publicUrl || 'https://localhost'
+    return { publicKey, privateKey, subject }
+  }
+
   get cookieName(): string {
     return this.config.get<string>('COOKIE_NAME', 'token')
   }

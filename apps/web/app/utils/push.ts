@@ -29,3 +29,13 @@ export function pushSupport(env: PushEnvironment): PushSupport {
   if (!env.hasServiceWorker || !env.hasPushManager || !env.hasNotification) return 'unsupported'
   return 'ok'
 }
+
+export type PushPlatform = 'ios' | 'android' | 'other'
+
+/** iPadOS 13+ يعرّف نفسه «Macintosh» فنميّزه بدعم اللمس */
+export function platformOf(userAgent: string, maxTouchPoints = 0): PushPlatform {
+  if (/iPhone|iPad|iPod/.test(userAgent) || (/Macintosh/.test(userAgent) && maxTouchPoints > 1)) {
+    return 'ios'
+  }
+  return /Android/i.test(userAgent) ? 'android' : 'other'
+}

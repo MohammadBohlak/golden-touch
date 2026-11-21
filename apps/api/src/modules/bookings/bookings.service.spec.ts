@@ -320,6 +320,51 @@ describe('BookingsService — الكتابة', () => {
   })
 })
 
+describe('BookingsService — إنذار الطاقم (docs/PUSH_NOTIFICATIONS_PLAN.md)', () => {
+  const updateData = (prisma: ReturnType<typeof setup>['prisma']) =>
+    (prisma.booking.update.mock.calls[0] as [{ data: Record<string, unknown> }])[0].data
+
+  it('نقل البداية يصفّر startAlertSentAt كي يُنذَر بالموعد الجديد', async () => {
+    const { service, prisma } = setup()
+    prisma.booking.findUnique.mockResolvedValue(row())
+    prisma.booking.update.mockResolvedValue(row())
+    await service.update('b1', { startAt: '2026-10-16T15:00:00Z' } as never, ADMIN)
+    expect(updateData(prisma).startAlertSentAt).toBeNull()
+  })
+
+  it('تعديل لا يغيّر البداية (ملاحظة) لا يلمس startAlertSentAt', async () => {
+    const { service, prisma } = setup()
+    prisma.booking.findUnique.mockResolvedValue(row())
+    prisma.booking.update.mockResolvedValue(row())
+    await service.update('b1', { notes: 'x' } as never, ADMIN)
+    expect(updateData(prisma)).not.toHaveProperty('startAlertSentAt')
+  })
+
+  it('تغيير المدة وحدها (البداية نفسها) لا يصفّر الإنذار', async () => {
+    const { service, prisma } = setup()
+    prisma.booking.findUnique.mockResolvedValue(row())
+    prisma.booking.update.mockResolvedValue(row())
+    await service.update('b1', { durationMinutes: 45 } as never, ADMIN)
+    expect(updateData(prisma)).not.toHaveProperty('startAlertSentAt')
+  })
+
+  it('إعادة فتح حجز تصفّر startAlertSentAt', async () => {
+    const { service, prisma } = setup()
+    prisma.booking.findUnique.mockResolvedValue(row({ status: BookingStatus.CANCELLED }))
+    prisma.booking.update.mockResolvedValue(row())
+    await service.reopen('b1', ADMIN)
+    expect(updateData(prisma).startAlertSentAt).toBeNull()
+  })
+
+  it('الاستجابة لا تحمل startAlertSentAt', async () => {
+    const { service, prisma } = setup()
+    prisma.booking.findUnique.mockResolvedValue(row())
+    prisma.booking.update.mockResolvedValue(row({ startAlertSentAt: new Date() }))
+    const view = await service.update('b1', { notes: 'x' } as never, ADMIN)
+    expect(view).not.toHaveProperty('startAlertSentAt')
+  })
+})
+
 describe('BookingsService — الحجوزات الدورية', () => {
   const recurringRow = (over: Record<string, unknown> = {}) =>
     row({

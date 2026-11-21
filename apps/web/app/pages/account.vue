@@ -6,7 +6,7 @@ definePageMeta({ title: 'حسابي' })
 
 const { $api } = useNuxtApp()
 const toast = useToast()
-const { user, logout } = useAuth()
+const { user, logout, can } = useAuth()
 const { confirm } = useConfirm()
 
 const { handleSubmit, isSubmitting, resetForm, setErrors } = useForm({
@@ -65,6 +65,8 @@ async function onLogout() {
         >
       </div>
     </section>
+
+    <PushSettings v-if="can('notifications.receive')" />
 
     <section class="rounded-3xl bg-surface p-4 shadow-card">
       <h2 class="mb-4 flex items-center gap-2 font-bold">

@@ -36,14 +36,22 @@ export function historyCutoff(now: Date, timezone: string): Date {
 // ───────────────────────── إخفاء المال ─────────────────────────
 
 /** الحجز كما يُرسَل للعميل: الحقلان الماليان غائبان تماماً عمّن لا يملك finance.read */
-export type BookingView = Omit<BookingWithRelations, 'price' | 'paidAmount'> & {
+export type BookingView = Omit<
+  BookingWithRelations,
+  'price' | 'paidAmount' | 'startAlertSentAt'
+> & {
   price?: number
   paidAmount?: number | null
 }
 
+/**
+ * `startAlertSentAt` حالة داخلية لمُرسِل الإشعارات: تُحذف دائماً كي لا تدخل استجابات الـ API
+ * (العقد في Swagger لا يحتويها) — docs/PUSH_NOTIFICATIONS_PLAN.md §5.1.
+ */
 export function toBookingView(booking: BookingWithRelations, caps: BookingCaps): BookingView {
-  if (caps.finance) return booking
-  const { price: _price, paidAmount: _paidAmount, ...rest } = booking
+  const { startAlertSentAt: _alert, ...visible } = booking
+  if (caps.finance) return visible
+  const { price: _price, paidAmount: _paidAmount, ...rest } = visible
   return rest
 }
 

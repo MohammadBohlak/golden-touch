@@ -73,6 +73,12 @@ describe('toBookingView', () => {
     expect(view.serviceName).toBe('شعر')
   })
 
+  it('startAlertSentAt حالة داخلية: لا تظهر لأي دور (المدير ولا المشرف)', () => {
+    const withAlert = booking({ startAlertSentAt: new Date() } as never)
+    expect(toBookingView(withAlert, ADMIN)).not.toHaveProperty('startAlertSentAt')
+    expect(toBookingView(withAlert, STAFF)).not.toHaveProperty('startAlertSentAt')
+  })
+
   it('لا يعدّل الكائن الأصلي', () => {
     const original = booking()
     toBookingView(original, STAFF)

@@ -27,5 +27,7 @@ export const envValidationSchema = Joi.object({
   // Web Push (VAPID): اختياريان معاً؛ subject رابط الموقع أو mailto: (لا بريد شخصي)
   VAPID_PUBLIC_KEY: Joi.string(),
   VAPID_PRIVATE_KEY: Joi.string(),
+  // الإنذار قبل الموعد بالدقائق (0 = إشعارات الطاقم معطّلة)
+  PUSH_ALERT_MINUTES: Joi.number().integer().min(0).max(60).default(15),
   VAPID_SUBJECT: Joi.string().uri({ scheme: ['https', 'mailto'] }),
 })

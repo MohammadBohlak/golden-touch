@@ -5,6 +5,8 @@ export function useAuth() {
   const { has } = usePermission()
 
   async function logout(): Promise<void> {
+    // قبل auth.logout (يحتاج الكوكي): فك اشتراك هذا الجهاز كي لا يستقبل إشعارات الحساب بعد الخروج
+    await usePush().releaseDevice()
     await auth.logout()
     invalidateApiCache()
     useServicesStore().$reset()

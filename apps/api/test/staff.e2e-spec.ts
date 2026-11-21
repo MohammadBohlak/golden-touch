@@ -152,7 +152,7 @@ function freshDb() {
       }),
       booking({ id: ID.pastActive, startAt: at(-18), price: 7000 }),
       // اليوم: قيد العمل بسعر خصّصه المدير (18000) + مكتمل
-      booking({ id: ID.today, startAt: at(10), price: 18000 }),
+      booking({ id: ID.today, startAt: at(10), price: 18000, startAlertSentAt: at(9) }),
       booking({
         id: ID.todayDone,
         startAt: at(12),
@@ -164,6 +164,7 @@ function freshDb() {
       booking({ id: ID.future, startAt: at(34) }),
     ] as any[],
     series: [] as any[],
+    pushSubs: [] as any[],
   }
 }
 
@@ -313,7 +314,10 @@ const fakePrisma: any = {
     },
     update: async ({ where, data }: any) => {
       const row = db.customers.find((c) => c.id === where.id)
-      Object.assign(row, Object.fromEntries(Object.entries(data).filter(([, v]) => v !== undefined)))
+      Object.assign(
+        row,
+        Object.fromEntries(Object.entries(data).filter(([, v]) => v !== undefined)),
+      )
       return row
     },
   },
@@ -444,6 +448,24 @@ const fakePrisma: any = {
       return { count: data.length }
     },
   },
+  pushSubscription: {
+    upsert: async ({ where, create, update }: any) => {
+      const row = db.pushSubs.find((x) => x.endpoint === where.endpoint)
+      if (row) return Object.assign(row, update)
+      const created = { id: randomUUID(), ...create }
+      db.pushSubs.push(created)
+      return created
+    },
+    findMany: async ({ where, skip }: any) =>
+      db.pushSubs.filter((x) => x.userId === where.userId).slice(skip ?? 0),
+    deleteMany: async ({ where }: any) => {
+      const before = db.pushSubs.length
+      db.pushSubs = db.pushSubs.filter(
+        (x) => !(x.endpoint === where.endpoint && (!where.userId || x.userId === where.userId)),
+      )
+      return { count: before - db.pushSubs.length }
+    },
+  },
   $transaction: async (arg: any) => (Array.isArray(arg) ? Promise.all(arg) : arg(fakePrisma)),
 }
 
@@ -525,6 +547,55 @@ describe('مشرف الحجوزات مقابل المدير (e2e بلا قاعد
     })
   })
 
+  describe('إشعارات المواعيد (Web Push)', () => {
+    const FCM = 'https://fcm.googleapis.com/fcm/send/e2e-device'
+    const keys = { p256dh: 'p256dh-key', auth: 'auth-key' }
+
+    it('المشرف يسجّل جهازه (يملك notifications.receive)', async () => {
+      await staff.post('/api/push/subscriptions').send({ endpoint: FCM, keys }).expect(200)
+      expect(db.pushSubs).toHaveLength(1)
+      expect(db.pushSubs[0].userId).toBe(ID.staffUser)
+    })
+
+    it('عنوان خارج قائمة مضيفي خدمات Push → 400 بالعربية ولا كتابة', async () => {
+      const res = await staff
+        .post('/api/push/subscriptions')
+        .send({ endpoint: 'https://169.254.169.254/latest', keys })
+        .expect(400)
+      expect(res.body.message).toBe('عنوان الاشتراك غير مسموح')
+      expect(db.pushSubs).toHaveLength(0)
+    })
+
+    it('جسم ناقص → 400 برسائل التحقق العربية', async () => {
+      const res = await staff.post('/api/push/subscriptions').send({ endpoint: FCM }).expect(400)
+      expect(res.body.statusCode).toBe(400)
+    })
+
+    it('مفاتيح VAPID غير مضبوطة: public-key و test → 503', async () => {
+      await staff.get('/api/push/public-key').expect(503)
+      await staff.post('/api/push/test').expect(503)
+    })
+
+    it('الجهاز نفسه عند تبديل الحساب ينتقل لمالكه الجديد', async () => {
+      await staff.post('/api/push/subscriptions').send({ endpoint: FCM, keys }).expect(200)
+      await admin.post('/api/push/subscriptions').send({ endpoint: FCM, keys }).expect(200)
+      expect(db.pushSubs).toHaveLength(1)
+      expect(db.pushSubs[0].userId).toBe(ID.adminUser)
+    })
+
+    it('الإيقاف يحذف جهاز صاحبه فقط', async () => {
+      await admin.post('/api/push/subscriptions').send({ endpoint: FCM, keys }).expect(200)
+      await staff.delete('/api/push/subscriptions').send({ endpoint: FCM }).expect(200)
+      expect(db.pushSubs).toHaveLength(1) // المشرف لا يحذف جهاز المدير
+      await admin.delete('/api/push/subscriptions').send({ endpoint: FCM }).expect(200)
+      expect(db.pushSubs).toHaveLength(0)
+    })
+
+    it('بلا تسجيل دخول → 401', async () => {
+      await request(app.getHttpServer()).get('/api/push/public-key').expect(401)
+    })
+  })
+
   describe('الخدمات', () => {
     it('المشرف: الاسم والمدة بلا سعر', async () => {
       const res = await staff.get('/api/services?includeInactive=true').expect(200)
@@ -550,6 +621,14 @@ describe('مشرف الحجوزات مقابل المدير (e2e بلا قاعد
       )
       expect(res.body.summary).toEqual({ total: 2, active: 1, completed: 1, cancelled: 0 })
       expectNoMoney(res.body)
+      // حالة داخلية لمُرسِل الإشعارات: لا تدخل استجابة الـ API لأي دور
+      expect(JSON.stringify(res.body)).not.toContain('startAlertSentAt')
+    })
+
+    it('المدير أيضاً لا يستلم startAlertSentAt', async () => {
+      const res = await admin.get(`/api/bookings/${ID.today}`).expect(200)
+      expect(res.body.id).toBe(ID.today)
+      expect(res.body).not.toHaveProperty('startAlertSentAt')
     })
 
     it('القائمة: لا شيء قبل اليوم مهما كانت الفلاتر', async () => {

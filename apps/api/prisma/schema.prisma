@@ -49,8 +49,9 @@ model User {
   createdAt    DateTime  @default(now()) @db.Timestamptz(3)
   updatedAt    DateTime  @updatedAt @db.Timestamptz(3)
 
-  bookingsCreated  Booking[]          @relation("BookingCreatedBy")
-  recurringCreated RecurringBooking[] @relation("RecurringCreatedBy")
+  bookingsCreated   Booking[]          @relation("BookingCreatedBy")
+  recurringCreated  RecurringBooking[] @relation("RecurringCreatedBy")
+  pushSubscriptions PushSubscription[]
 
   @@index([roleId])
   @@map("users")
@@ -119,36 +120,38 @@ enum BookingStatus {
 }
 
 model Booking {
-  id              String            @id @default(uuid()) @db.Uuid
-  customerId      String            @db.Uuid
-  customer        Customer          @relation(fields: [customerId], references: [id], onDelete: Restrict)
-  serviceId       String            @db.Uuid
-  service         Service           @relation(fields: [serviceId], references: [id], onDelete: Restrict)
+  id               String            @id @default(uuid()) @db.Uuid
+  customerId       String            @db.Uuid
+  customer         Customer          @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  serviceId        String            @db.Uuid
+  service          Service           @relation(fields: [serviceId], references: [id], onDelete: Restrict)
   /// لقطة من الخدمة وقت الحجز — تغيير الخدمة لاحقاً لا يغيّر السجل
-  serviceName     String
+  serviceName      String
   /// السعر المتفق عليه (افتراضياً سعر الخدمة)
-  price           Int
-  durationMinutes Int
-  startAt         DateTime          @db.Timestamptz(3)
-  endAt           DateTime          @db.Timestamptz(3)
-  status          BookingStatus     @default(ACTIVE)
+  price            Int
+  durationMinutes  Int
+  startAt          DateTime          @db.Timestamptz(3)
+  endAt            DateTime          @db.Timestamptz(3)
+  status           BookingStatus     @default(ACTIVE)
   /// المبلغ المدفوع فعلياً عند الإكمال
-  paidAmount      Int?
-  notes           String?
-  cancelReason    String?
-  completedAt     DateTime?         @db.Timestamptz(3)
-  cancelledAt     DateTime?         @db.Timestamptz(3)
-  createdById     String?           @db.Uuid
-  createdBy       User?             @relation("BookingCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  paidAmount       Int?
+  notes            String?
+  cancelReason     String?
+  completedAt      DateTime?         @db.Timestamptz(3)
+  cancelledAt      DateTime?         @db.Timestamptz(3)
+  createdById      String?           @db.Uuid
+  createdBy        User?             @relation("BookingCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
   /// الحجز الدوري الذي ولّد هذا الموعد (null = حجز عادي)
-  recurringId     String?           @db.Uuid
-  recurring       RecurringBooking? @relation(fields: [recurringId], references: [id], onDelete: SetNull)
+  recurringId      String?           @db.Uuid
+  recurring        RecurringBooking? @relation(fields: [recurringId], references: [id], onDelete: SetNull)
   /// يوم الدوام المخطَّط للموعد (لا يتغيّر بنقل الموعد) — يمنع توليده مرتين
-  occurrenceDate  DateTime?         @db.Date
+  occurrenceDate   DateTime?         @db.Date
   /// عُدّل هذا الموعد يدوياً فلا تعيد كتابته تعديلات السلسلة
-  recurringEdited Boolean           @default(false)
-  createdAt       DateTime          @default(now()) @db.Timestamptz(3)
-  updatedAt       DateTime          @updatedAt @db.Timestamptz(3)
+  recurringEdited  Boolean           @default(false)
+  /// وقت إرسال إشعار «يبدأ بعد 15 دقيقة» للطاقم (Web Push) — منفصل عن تذكير الزبون؛ لا يظهر في الـ API
+  startAlertSentAt DateTime?         @db.Timestamptz(3)
+  createdAt        DateTime          @default(now()) @db.Timestamptz(3)
+  updatedAt        DateTime          @updatedAt @db.Timestamptz(3)
 
   @@unique([recurringId, occurrenceDate])
   @@index([recurringId, startAt])
@@ -157,6 +160,26 @@ model Booking {
   @@index([customerId])
   @@index([serviceId])
   @@map("bookings")
+}
+
+// ───────────────────────── إشعارات الطاقم (Web Push) ─────────────────────────
+// docs/PUSH_NOTIFICATIONS_PLAN.md — اشتراك جهاز واحد لمستخدم؛ endpoint فريد ينتقل لمالكه الحالي عند الاشتراك.
+
+model PushSubscription {
+  id         String   @id @default(uuid()) @db.Uuid
+  userId     String   @db.Uuid
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  endpoint   String   @unique
+  p256dh     String
+  auth       String
+  /// لعرض نوع الجهاز في قائمة الأجهزة
+  userAgent  String?
+  /// آخر فتح للتطبيق على هذا الجهاز؛ ما لم يُفتح 30 يوماً (عمر الجلسة) لا يُرسَل إليه
+  lastSeenAt DateTime @default(now()) @db.Timestamptz(3)
+  createdAt  DateTime @default(now()) @db.Timestamptz(3)
+
+  @@index([userId])
+  @@map("push_subscriptions")
 }
 
 // ───────────────────────── الحجوزات الدورية ─────────────────────────

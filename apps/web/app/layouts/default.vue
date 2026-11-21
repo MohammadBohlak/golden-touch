@@ -3,10 +3,14 @@
 // overflow-x-clip: إزاحة الصفحات أثناء الانتقال لا تُظهر شريط تمرير أفقي، وclip لا يكسر sticky.
 const route = useRoute()
 const settings = useSettingsStore()
+const { can } = useAuth()
+const push = usePush()
 
 // الإعدادات (المنطقة الزمنية + الدوام) تلزم كل الصفحات — تُحمّل مرة واحدة
 onMounted(() => {
   settings.ensure().catch(() => {})
+  // إشعارات المواعيد: تجديد الاشتراك (lastSeenAt) أو إعادته إن ضاع، عند كل فتح للتطبيق
+  if (can('notifications.receive')) void push.init()
 })
 
 useHead({ title: () => (route.meta.title as string | undefined) ?? 'الجدول' })

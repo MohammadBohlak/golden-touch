@@ -10,7 +10,7 @@ import { AuthModule } from './modules/auth/auth.module'
 import { BookingsModule } from './modules/bookings/bookings.module'
 import { CustomersModule } from './modules/customers/customers.module'
 import { HealthModule } from './modules/health/health.module'
-import { PushLabModule } from './modules/push-lab/push-lab.module'
+import { PushModule } from './modules/push/push.module'
 import { RecurringModule } from './modules/recurring/recurring.module'
 import { RolesModule } from './modules/roles/roles.module'
 import { ServicesModule } from './modules/services/services.module'
@@ -35,7 +35,7 @@ import { PrismaModule } from './prisma/prisma.module'
     BookingsModule,
     RecurringModule,
     StatsModule,
-    PushLabModule,
+    PushModule,
   ],
   providers: [
     // الترتيب مهم: التحديد ← المصادقة ← الصلاحيات

@@ -15,6 +15,7 @@ const STAFF_MUST_HAVE = [
   'bookings.update',
   'customers.create',
   'customers.read',
+  'notifications.receive', // إشعارات المواعيد للمشرف — بلا مال (docs/PUSH_NOTIFICATIONS_PLAN.md D1)
   'recurring.manage', // الحجوزات الدورية — بلا مال ولا ماضٍ (docs/RECURRING_BOOKINGS_PLAN.md)
   'recurring.read',
   'services.read',

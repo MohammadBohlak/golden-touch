@@ -83,6 +83,11 @@ export class AppConfig {
     return { publicKey, privateKey, subject }
   }
 
+  /** الإنذار قبل بداية الموعد بالدقائق لإشعارات الطاقم؛ 0 = معطّل (docs/PUSH_NOTIFICATIONS_PLAN.md D3) */
+  get pushAlertMinutes(): number {
+    return Number(this.config.get('PUSH_ALERT_MINUTES', 15))
+  }
+
   get cookieName(): string {
     return this.config.get<string>('COOKIE_NAME', 'token')
   }

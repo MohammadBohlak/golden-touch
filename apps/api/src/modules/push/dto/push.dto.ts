@@ -1,15 +1,6 @@
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger'
+import { ApiProperty } from '@nestjs/swagger'
 import { Type } from 'class-transformer'
-import {
-  IsInt,
-  IsNotEmpty,
-  IsOptional,
-  IsString,
-  Max,
-  MaxLength,
-  Min,
-  ValidateNested,
-} from 'class-validator'
+import { IsNotEmpty, IsObject, IsString, MaxLength, ValidateNested } from 'class-validator'
 
 export class PushKeysDto {
   @ApiProperty()
@@ -33,6 +24,8 @@ export class SubscribeDto {
   endpoint: string
 
   @ApiProperty({ type: PushKeysDto })
+  // IsObject: ValidateNested وحده يتجاوز القيمة الغائبة فيصير الخطأ 500 لا 400
+  @IsObject({ message: 'مفاتيح الاشتراك مطلوبة' })
   @ValidateNested()
   @Type(() => PushKeysDto)
   keys: PushKeysDto
@@ -44,13 +37,4 @@ export class UnsubscribeDto {
   @IsNotEmpty({ message: 'عنوان الاشتراك غير صالح' })
   @MaxLength(1024, { message: 'عنوان الاشتراك غير صالح' })
   endpoint: string
-}
-
-export class SendTestDto {
-  @ApiPropertyOptional({ description: 'التأخير قبل الإرسال بالثواني (0–3600)', example: 60 })
-  @IsOptional()
-  @IsInt({ message: 'التأخير يجب أن يكون عدداً صحيحاً' })
-  @Min(0, { message: 'التأخير لا يقل عن 0' })
-  @Max(3600, { message: 'التأخير لا يزيد على ساعة' })
-  delaySeconds?: number
 }

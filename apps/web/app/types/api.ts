@@ -269,14 +269,16 @@ export interface RecurringPreview {
   keptEdited: number
 }
 
-/** تجربة الإشعارات (المرحلة 0، مؤقتة) — docs/PUSH_NOTIFICATIONS_PLAN.md */
-export interface PushLabStatus {
-  /** false = مفاتيح VAPID غير مضبوطة على الخادم */
-  enabled: boolean
-  publicKey: string | null
+/** إشعارات المواعيد (Web Push) — GET /push/public-key و POST /push/test */
+export interface PushPublicKey {
+  publicKey: string
+}
+
+export interface PushTestResult {
   /** عدد أجهزتي المشتركة */
-  subscriptions: number
-  pending: Array<{ inSeconds: number }>
-  /** آخر الإرسالات: status 201 = قبلته خدمة Push، 0 = فشل شبكة */
-  log: Array<{ at: string; status: number; removed: boolean }>
+  devices: number
+  sent: number
+  /** اشتراكات سقطت فحُذفت (حُذف التطبيق أو أُلغي الإذن) */
+  removed: number
+  failed: number
 }

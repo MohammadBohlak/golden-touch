@@ -42,6 +42,19 @@
 - الصلاحيتان `recurring.read` / `recurring.manage` للمدير والمشرف (D12) بـ migration idempotent؛ `staff-surface.spec.ts` يثبّت 6 مسارات الدوري للمشرف.
 - **الواجهة:** `/recurring` (قائمة) · `/new` · `/[id]` · `/[id]/edit`؛ المنطق النقي في `utils/recurrence.ts`. التعديل يرسل **المتغيّر فقط** (`patchBody`/`previewBody`) — إرسال `startDate` دون تغيير يُخضع سلسلة بدأت سابقاً لفحص «من اليوم» فيُرفض.
 
+## إشعارات المواعيد (Web Push)
+
+الخطة والقرارات في `docs/PUSH_NOTIFICATIONS_PLAN.md` (D1–D4). إشعار على هاتف **المدير والمشرف** قبل بداية كل حجز بـ `PUSH_ALERT_MINUTES` (15): «الاسم · الخدمة · الوقت». قنوات خارجية مجانية (FCM/APNs)، التشفير طرفي، بلا طرف ثالث.
+
+- **الصلاحية:** `notifications.receive` للمدير والمشرف بـ migration idempotent. المسارات `/push/*` (4) تدخل في `staff-surface.spec.ts`.
+- **المُرسِل** `modules/push/`: `PushAlertService` (`setInterval` كل 60ث، معطّل في الاختبارات وبـ `PUSH_ALERT_MINUTES=0` وبلا VAPID)، `PushSenderService` (مكتبة `web-push`، لا تكتب التشفير يدوياً)، والمنطق النقي في `push-alert.calc.ts`. السجل أعداد فقط بلا أسماء.
+- **مرة واحدة على الأكثر:** `Booking.startAlertSentAt` يُحجز بـ `updateMany({ where: { id, startAlertSentAt: null, startAt } })` قبل الإرسال (ينجو من نشر متداخل). `BookingsService.update` عند تغيّر `startAt` و`reopen` يصفّرانه. **`toBookingView` يحذفه دائماً** — لا يدخل استجابة API ولا Swagger.
+- **قرار D2:** حجز أُنشئ داخل نافذة الإنذار لا يُشعَر به. بلا مستلمين لا يُحجز الإنذار.
+- **المحتوى بلا مال ولا هاتف ولا سجل** (يصل المشرف أيضاً): مفاتيح الحمولة `title/body/tag` فقط.
+- **الأمان:** `push-endpoint.ts` يقبل `https` ومضيفي خدمات Push المعروفة فقط (SSRF). المفتاحان `VAPID_PUBLIC_KEY/VAPID_PRIVATE_KEY` في Render (`sync: false`) — **تغيير المفتاح الخاص يبطل كل الاشتراكات**. الـ DTO المتداخل يحتاج `@IsObject` مع `@ValidateNested` وإلا صار الجسم الناقص 500 لا 400.
+- **`KeepAliveService` حرج لها:** نوم الخادم يعني ضياع الإشعارات.
+- **الواجهة:** `public/sw.js` (بلا fetch ولا كاش؛ يعرض إشعاراً لكل push دائماً)، و`composables/usePush.ts` (الحالات `off/on/denied/needs-install/unsupported/server-off`؛ `init()` يُستدعى من `layouts/default.vue` عند كل فتح فيجدّد `lastSeenAt` ويعيد الاشتراك إن ضاع)، وقسم `PushSettings` في صفحة الحساب. **تسجيل الخروج** (`useAuth().logout`) يفك اشتراك الجهاز قبل `/auth/logout`. على iPhone يتطلب Web Push إضافة الموقع للشاشة الرئيسية؛ على Poco/Xiaomi يلزم إعداد البطارية (يُعرض في القسم). طلب الإذن أول `await` بعد النقرة (شرط iOS) ومفتاح VAPID يُجلب قبلها.
+
 ## الواجهة
 
 - **الحقول المالية/التاريخية اختيارية في `types/api.ts`** (`price?`، `visits?`…): أخفِ العنصر بشرط غياب الحقل (`v-if="b.price !== undefined"`) لا باسم الدور، واحذفه بدل تعطيله وأعد توزيع التخطيط.

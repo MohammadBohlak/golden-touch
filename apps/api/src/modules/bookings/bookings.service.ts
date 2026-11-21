@@ -308,6 +308,8 @@ export class BookingsService {
     const timeChanged =
       startAt.getTime() !== booking.startAt.getTime() || endAt.getTime() !== booking.endAt.getTime()
     if (timeChanged) Object.assign(data, { startAt, endAt, durationMinutes })
+    // موعد جديد = إنذار جديد للطاقم (docs/PUSH_NOTIFICATIONS_PLAN.md §5.2)؛ تغيير المدة وحدها لا يغيّر البداية
+    if (startAt.getTime() !== booking.startAt.getTime()) data.startAlertSentAt = null
 
     const updated = await this.guardOverlap(() =>
       this.prisma.$transaction(async (tx) => {
@@ -398,6 +400,8 @@ export class BookingsService {
             completedAt: null,
             cancelledAt: null,
             cancelReason: null,
+            // عاد قيد العمل: يُنذَر بموعده من جديد إن بقي ضمن النافذة
+            startAlertSentAt: null,
           },
           include: bookingInclude,
         })
